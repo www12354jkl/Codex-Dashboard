@@ -25,11 +25,18 @@
 # 安装依赖
 pnpm install
 
-# 模式 1（可选本机 127.0.0.1 CDP 原生 DOM 挂载 · 推荐）：0ms 随缩放贴合、窄窗口自动收成独立小图标、普通 Chat 页自动隐藏
+# 模式 1（推荐 · 无黑框一键联动启停）：生成桌面 & 开始菜单快捷方式「Codex (Dashboard)」
+# 双击该快捷方式（或右键固定到任务栏）即可无终端黑框拉起 Codex 并挂载仪表盘，彻底退出 Codex 后自动关闭
+pnpm run shortcut
+
+# 或直接从命令无黑框启动 CDP 托盘宿主（默认开启随 Codex 自动退出）
+pnpm run start:cdp:bg
+
+# 模式 2（终端前台运行 CDP 模式，适合开发调试，可加 -- --auto-exit）
 # 若 Codex 当前已在运行但未开调试口，请先右键托盘彻底退出 Codex 再执行此命令
 pnpm run start:cdp
 
-# 模式 2（零端口透明浮窗）：自动吸附 Codex Desktop，未打开或不在前台时自动隐藏
+# 模式 3（零端口透明浮窗）：自动吸附 Codex Desktop，未打开或不在前台时自动隐藏
 pnpm start
 
 # 独立预览模式（不追踪 Codex 窗口，便于直接调试浮窗样式与交互）

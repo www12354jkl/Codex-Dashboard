@@ -8,6 +8,7 @@ import type { Duplex } from "node:stream";
 import { test } from "node:test";
 import { setTimeout as delay } from "node:timers/promises";
 import { runInNewContext } from "node:vm";
+import { CodexExitWatchdog } from "../cdp/codexApp.js";
 import { CodexCdpHost, selectCodexTargets } from "../cdp/host.js";
 import {
   classifyCodexSurface,
@@ -379,4 +380,64 @@ test("CDP host injects and serves independent windows, reconnects, reloads, and 
   assert.equal(window.widgetVersion, undefined, "teardown cancels an outstanding mount");
   assert.ok(requests.length >= 3);
   assert.ok(requests.every(url => url === "/json/list"));
+});
+
+test("CodexExitWatchdog auto-exits after Codex closes, tolerates transient misses, and respects toggle & startup timeout", async () => {
+  const replies = [false, true, false, true, false, false];
+  let exited = 0;
+  const watchdog = new CodexExitWatchdog({
+    probe: async () => replies.shift() ?? false,
+    onExited: () => { exited += 1; },
+    missThreshold: 2
+  });
+
+  // Initial miss before Codex finishes booting should not trigger exit
+  await watchdog.tick();
+  assert.equal(watchdog.hasSeenAlive(), false);
+  assert.equal(exited, 0);
+
+  // Alive once -> seenAlive becomes true
+  await watchdog.tick();
+  assert.equal(watchdog.hasSeenAlive(), true);
+  assert.equal(exited, 0);
+
+  // Single transient miss then recovery resets miss counter
+  await watchdog.tick();
+  assert.equal(exited, 0);
+  await watchdog.tick();
+  assert.equal(exited, 0);
+
+  // Two consecutive misses after seenAlive triggers onExited once
+  await watchdog.tick();
+  assert.equal(exited, 0);
+  await watchdog.tick();
+  assert.equal(exited, 1);
+
+  // Disabled watchdog never fires onExited
+  let disabledExited = 0;
+  const disabledWatchdog = new CodexExitWatchdog({
+    probe: async () => false,
+    initiallyAlive: true,
+    missThreshold: 1,
+    onExited: () => { disabledExited += 1; }
+  });
+  disabledWatchdog.setEnabled(false);
+  await disabledWatchdog.tick();
+  await disabledWatchdog.tick();
+  assert.equal(disabledExited, 0);
+  disabledWatchdog.stop();
+
+  // Startup timeout fires when Codex never becomes reachable
+  let timedOut = 0;
+  const timeoutWatchdog = new CodexExitWatchdog({
+    probe: async () => false,
+    startupTimeoutMs: 1,
+    onExited: () => {},
+    onStartupTimeout: () => { timedOut += 1; }
+  });
+  timeoutWatchdog.start();
+  await delay(25);
+  await timeoutWatchdog.tick();
+  timeoutWatchdog.stop();
+  assert.equal(timedOut, 1);
 });

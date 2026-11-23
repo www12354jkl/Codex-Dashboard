@@ -198,6 +198,11 @@ interface AttachedPage {
   detaching?: Promise<void>;
 }
 
+export interface CodexCdpHostState {
+  attachedPages: number;
+  updateStatus: UpdateStatus | null;
+}
+
 export interface CodexCdpHostOptions {
   port?: number;
   root?: string;
@@ -205,6 +210,7 @@ export interface CodexCdpHostOptions {
   widgetSource?: string;
   codexHome?: string;
   configPath?: string;
+  onStateChange?: (state: CodexCdpHostState) => void;
 }
 
 async function findThreadRollout(sessionDir: string, threadId: string): Promise<string | undefined> {
@@ -252,6 +258,29 @@ export class CodexCdpHost {
     return this.stopping ??= this.shutdown();
   }
 
+  getAttachedCount(): number {
+    return this.pages.size;
+  }
+
+  async reloadWidgets(): Promise<void> {
+    if (this.lifetime.signal.aborted) return;
+    this.reloading ??= this.reload().finally(() => { this.reloading = undefined; });
+    await this.reloading;
+  }
+
+  async checkForUpdatesNow(repoOverride?: string): Promise<UpdateStatus | null> {
+    if (!this.updater || this.lifetime.signal.aborted) return null;
+    return this.updater.checkForUpdates(this.config, repoOverride?.trim() || OFFICIAL_GITHUB_REPO);
+  }
+
+  private notifyState(): void {
+    if (this.lifetime.signal.aborted) return;
+    this.options.onStateChange?.({
+      attachedPages: this.pages.size,
+      updateStatus: this.updater?.getStatus() ?? null
+    });
+  }
+
   private async initialize(): Promise<void> {
     const [source, config, metadata] = await Promise.all([
       this.readWidget(),
@@ -269,7 +298,10 @@ export class CodexCdpHost {
       helperPath: path.join(this.root, "dist", "updater", "applyStaged.mjs"),
       executable: process.execPath,
       args: process.argv.slice(1),
-      onStatus: payload => this.broadcast({ type: "update_status", payload }),
+      onStatus: payload => {
+        this.broadcast({ type: "update_status", payload });
+        this.notifyState();
+      },
       onProgress: payload => this.broadcast({ type: "update_progress", payload })
     });
     this.updater.invalidatePlan(config.repo);
@@ -296,7 +328,10 @@ export class CodexCdpHost {
       await Promise.all(Array.from(this.pages, async ([id, page]) => {
         if (targets.get(id) === page.url) return;
         await this.detach(page);
-        if (this.pages.get(id) === page) this.pages.delete(id);
+        if (this.pages.get(id) === page) {
+          this.pages.delete(id);
+          this.notifyState();
+        }
       }));
       if (this.lifetime.signal.aborted) return;
       for (const [id, url] of targets) {
@@ -311,10 +346,14 @@ export class CodexCdpHost {
 
   private attach(id: string, url: string): void {
     const connection = new PageConnection(url, event => this.handleEvent(page, event), () => {
-      if (this.pages.get(id) === page) this.pages.delete(id);
+      if (this.pages.get(id) === page) {
+        this.pages.delete(id);
+        this.notifyState();
+      }
     });
     const page: AttachedPage = { url, connection, contexts: new Map(), installation: Promise.resolve() };
     this.pages.set(id, page);
+    this.notifyState();
     page.installation = this.install(page).catch(error => this.installFailed(page, error));
   }
 

@@ -102,6 +102,17 @@ await build({
   // cdp/launcher.ts may not exist yet before parallel build completes
 });
 
+await build({
+  entryPoints: [path.join(root, "cdp", "trayApp.ts")],
+  outfile: path.join(distDir, "cdp", "trayApp.mjs"),
+  bundle: true,
+  platform: "node",
+  format: "esm",
+  target: "node22",
+  external: ["electron", "node:sqlite"],
+  sourcemap: true
+});
+
 // 5. Optional test bundles
 if (includeTests) {
   const testsDir = path.join(root, "tests");

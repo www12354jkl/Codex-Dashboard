@@ -16,6 +16,8 @@
     "start": "node scripts/build.mjs && electron .",
     "dev": "node scripts/build.mjs && electron . --dev",
     "start:cdp": "node scripts/build.mjs && node dist/cdp/launcher.mjs",
+    "start:cdp:bg": "node scripts/build.mjs && electron dist/cdp/trayApp.mjs",
+    "shortcut": "node scripts/build.mjs && node scripts/create-shortcut.mjs",
     "smoke:collector": "node scripts/build.mjs && node scripts/smoke-collector.mjs"
   },
   "devDependencies": {
