@@ -1,0 +1,2070 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="color-scheme" content="light dark" />
+  <script>
+    try {
+      const saved = localStorage.getItem("codex-hud-color-scheme");
+      document.querySelector('meta[name="color-scheme"]').content =
+        saved === "light" || saved === "dark" ? saved : "light dark";
+    } catch {}
+  </script>
+  <title>Codex App 指标插件 · 独立按钮版原型 (v2)</title>
+  <style>
+    :root {
+      color-scheme: light dark;
+
+      &:has(> head > meta[name="color-scheme"][content="dark"]) {
+        color-scheme: dark;
+      }
+      &:has(> head > meta[name="color-scheme"][content="light"]) {
+        color-scheme: light;
+      }
+
+      /* Codex Desktop faithful surfaces & ink */
+      --bg-app: light-dark(#f8f8f8, #121214);
+      --bg-sidebar: light-dark(#f3f3f3, #17171a);
+      --bg-canvas: light-dark(#ffffff, #161618);
+      --bg-composer: light-dark(#ffffff, #1e1e22);
+      --bg-elevated: light-dark(#ffffff, #232328);
+      --bg-subtle: light-dark(#f5f5f5, #28282e);
+      --bg-pill: light-dark(rgba(0, 0, 0, 0.035), rgba(255, 255, 255, 0.06));
+      --bg-pill-hover: light-dark(rgba(0, 0, 0, 0.065), rgba(255, 255, 255, 0.105));
+      --bg-pill-active: light-dark(rgba(0, 0, 0, 0.088), rgba(255, 255, 255, 0.14));
+
+      --border-hairline: light-dark(rgba(0, 0, 0, 0.085), rgba(255, 255, 255, 0.095));
+      --border-strong: light-dark(rgba(0, 0, 0, 0.15), rgba(255, 255, 255, 0.18));
+      --border-subtle: light-dark(rgba(0, 0, 0, 0.055), rgba(255, 255, 255, 0.065));
+
+      --ink-primary: light-dark(#161616, #ededf0);
+      --ink-secondary: light-dark(#5c5c62, #a2a2ab);
+      --ink-muted: light-dark(#9a9aa2, #72727b);
+      --ink-placeholder: light-dark(#a8a8af, #64646d);
+
+      /* Brand & semantic tokens */
+      --codex-full-access: light-dark(#9c4916, #e28b54);
+      --codex-voice-bg: light-dark(#141414, #f0f0f2);
+      --codex-voice-fg: light-dark(#ffffff, #141414);
+
+      --sem-ok: light-dark(#147a4c, #49c98c);
+      --sem-ok-soft: light-dark(rgba(20, 122, 76, 0.10), rgba(73, 201, 140, 0.14));
+      --sem-warn: light-dark(#b5620b, #eba246);
+      --sem-warn-soft: light-dark(rgba(181, 98, 11, 0.11), rgba(235, 162, 70, 0.15));
+      --sem-danger: light-dark(#c2312a, #f06d66);
+      --sem-danger-soft: light-dark(rgba(194, 49, 42, 0.10), rgba(240, 109, 102, 0.15));
+      --sem-info: light-dark(#2a63b8, #73a6f5);
+      --sem-reasoning: light-dark(#6c4eb6, #a98df0);
+
+      --shadow-composer: light-dark(
+        0 6px 24px rgba(0, 0, 0, 0.04),
+        0 8px 28px rgba(0, 0, 0, 0.35)
+      );
+      --shadow-popover: light-dark(
+        0 14px 36px rgba(0, 0, 0, 0.11),
+        0 18px 46px rgba(0, 0, 0, 0.56)
+      );
+      --shadow-tweaks: light-dark(
+        0 10px 30px rgba(0, 0, 0, 0.08),
+        0 12px 34px rgba(0, 0, 0, 0.48)
+      );
+
+      --font-sans: "Segoe UI Variable Text", "PingFang SC", "Microsoft YaHei UI", "Hiragino Sans GB", sans-serif;
+      --font-mono: "Cascadia Mono", "JetBrains Mono", "SFMono-Regular", Consolas, monospace;
+
+      --radius-composer: 26px;
+      --radius-popover: 15px;
+      --ease-out-expo: cubic-bezier(0.16, 1, 0.3, 1);
+    }
+
+    *, *::before, *::after {
+      box-sizing: border-box;
+    }
+
+    html, body {
+      margin: 0;
+      padding: 0;
+      height: 100%;
+      font-family: var(--font-sans);
+      background: var(--bg-app);
+      color: var(--ink-primary);
+      -webkit-font-smoothing: antialiased;
+      text-rendering: optimizeLegibility;
+    }
+
+    .mono {
+      font-family: var(--font-mono);
+      font-variant-numeric: tabular-nums;
+    }
+
+    /* Simulated Codex Desktop Shell */
+    .app-shell {
+      display: grid;
+      grid-template-columns: 236px minmax(0, 1fr);
+      min-height: 100dvh;
+      background: var(--bg-canvas);
+    }
+
+    @media (max-width: 920px) {
+      .app-shell {
+        grid-template-columns: minmax(0, 1fr);
+      }
+      .sidebar {
+        display: none;
+      }
+    }
+
+    .sidebar {
+      background: var(--bg-sidebar);
+      border-right: 1px solid var(--border-subtle);
+      padding: 14px 12px;
+      display: flex;
+      flex-direction: column;
+      gap: 14px;
+      user-select: none;
+    }
+
+    .win-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 4px 6px;
+    }
+
+    .brand-mark {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 13px;
+      font-weight: 600;
+      letter-spacing: -0.01em;
+    }
+
+    .brand-dot {
+      width: 18px;
+      height: 18px;
+      border-radius: 5px;
+      border: 1.5px solid var(--ink-primary);
+      display: grid;
+      place-items: center;
+      font-size: 10px;
+      font-weight: 700;
+    }
+
+    .sidebar-section-label {
+      font-size: 11px;
+      font-weight: 500;
+      color: var(--ink-muted);
+      padding: 0 8px;
+      margin-top: 4px;
+    }
+
+    .thread-list {
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+    }
+
+    .thread-item {
+      padding: 8px 10px;
+      border-radius: 9px;
+      font-size: 12.5px;
+      color: var(--ink-secondary);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      cursor: default;
+    }
+
+    .thread-item.is-active {
+      background: var(--bg-pill-hover);
+      color: var(--ink-primary);
+      font-weight: 500;
+    }
+
+    .thread-meta {
+      font-size: 11px;
+      color: var(--ink-muted);
+      flex-shrink: 0;
+    }
+
+    .sidebar-footer {
+      margin-top: auto;
+      padding: 10px 8px 4px;
+      border-top: 1px solid var(--border-subtle);
+      font-size: 11.5px;
+      color: var(--ink-muted);
+      line-height: 1.55;
+    }
+
+    /* Main Workspace */
+    .workspace {
+      display: flex;
+      flex-direction: column;
+      min-height: 100dvh;
+      background: var(--bg-canvas);
+      position: relative;
+    }
+
+    .workspace-topbar {
+      height: 50px;
+      padding: 0 22px;
+      border-bottom: 1px solid var(--border-subtle);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+    }
+
+    .topbar-left {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      min-width: 0;
+    }
+
+    .topbar-title {
+      font-size: 13.5px;
+      font-weight: 600;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .topbar-badge {
+      font-size: 11.5px;
+      color: var(--ink-secondary);
+      background: var(--bg-subtle);
+      border: 1px solid var(--border-subtle);
+      border-radius: 6px;
+      padding: 2px 7px;
+      white-space: nowrap;
+    }
+
+    .style-quickbar {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      background: var(--bg-subtle);
+      padding: 3px;
+      border-radius: 10px;
+      border: 1px solid var(--border-subtle);
+    }
+
+    .style-tab {
+      appearance: none;
+      border: none;
+      background: transparent;
+      color: var(--ink-secondary);
+      font-family: inherit;
+      font-size: 12px;
+      font-weight: 500;
+      padding: 5px 10px;
+      border-radius: 7px;
+      cursor: pointer;
+      transition: background 140ms ease, color 140ms ease, box-shadow 140ms ease;
+      white-space: nowrap;
+    }
+
+    .style-tab:hover {
+      color: var(--ink-primary);
+    }
+
+    .style-tab[aria-pressed="true"] {
+      background: var(--bg-elevated);
+      color: var(--ink-primary);
+      box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
+    }
+
+    /* Chat Stage */
+    .chat-stage {
+      flex: 1;
+      width: 100%;
+      max-width: 820px;
+      margin: 0 auto;
+      padding: 28px 24px 18px;
+      display: flex;
+      flex-direction: column;
+      gap: 20px;
+    }
+
+    .msg-user {
+      align-self: flex-end;
+      max-width: 72%;
+      background: var(--bg-subtle);
+      border: 1px solid var(--border-subtle);
+      padding: 10px 15px;
+      border-radius: 16px 16px 4px 16px;
+      font-size: 14px;
+      line-height: 1.55;
+      text-wrap: pretty;
+    }
+
+    .msg-assistant {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      max-width: 92%;
+    }
+
+    .msg-step-row {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 12px;
+      color: var(--ink-muted);
+    }
+
+    .msg-step-pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      padding: 2px 8px;
+      border-radius: 999px;
+      background: var(--bg-subtle);
+      border: 1px solid var(--border-subtle);
+      color: var(--ink-secondary);
+      font-size: 11.5px;
+    }
+
+    .msg-body {
+      font-size: 14px;
+      line-height: 1.65;
+      text-wrap: pretty;
+    }
+
+    .msg-body code {
+      font-family: var(--font-mono);
+      font-size: 12.5px;
+      background: var(--bg-subtle);
+      padding: 1px 5px;
+      border-radius: 5px;
+      border: 1px solid var(--border-subtle);
+    }
+
+    .streaming-caret {
+      display: inline-block;
+      width: 7px;
+      height: 14px;
+      border-radius: 2px;
+      background: var(--ink-primary);
+      vertical-align: -2px;
+      margin-left: 3px;
+      opacity: 0;
+    }
+
+    body[data-scenario="streaming"] .streaming-caret {
+      opacity: 1;
+      animation: caret-blink 900ms steps(2) infinite;
+    }
+
+    @keyframes caret-blink {
+      0%, 100% { opacity: 0.9; }
+      50% { opacity: 0.15; }
+    }
+
+    .stage-note {
+      margin-top: auto;
+      padding: 10px 14px;
+      border-radius: 12px;
+      background: var(--bg-subtle);
+      border: 1px dashed var(--border-strong);
+      font-size: 12.5px;
+      color: var(--ink-secondary);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      flex-wrap: wrap;
+    }
+
+    .stage-note strong {
+      color: var(--ink-primary);
+      font-weight: 600;
+    }
+
+    .scenario-pills {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      flex-wrap: wrap;
+    }
+
+    .scenario-chip {
+      appearance: none;
+      border: 1px solid var(--border-hairline);
+      background: var(--bg-elevated);
+      color: var(--ink-secondary);
+      font-family: inherit;
+      font-size: 11.5px;
+      padding: 4px 9px;
+      border-radius: 999px;
+      cursor: pointer;
+      transition: all 140ms ease;
+    }
+
+    .scenario-chip:hover {
+      border-color: var(--border-strong);
+      color: var(--ink-primary);
+    }
+
+    .scenario-chip[aria-pressed="true"] {
+      background: var(--ink-primary);
+      color: var(--bg-canvas);
+      border-color: transparent;
+    }
+
+    /* ============================================================
+       CODEX DESKTOP COMPOSER
+       ============================================================ */
+    .composer-dock {
+      width: 100%;
+      max-width: 820px;
+      margin: 0 auto;
+      padding: 6px 24px 28px;
+    }
+
+    .composer-card {
+      background: var(--bg-composer);
+      border: 1px solid var(--border-hairline);
+      border-radius: var(--radius-composer);
+      box-shadow: var(--shadow-composer);
+      padding: 16px 16px 12px 20px;
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+      transition: border-color 180ms ease;
+    }
+
+    .composer-card:focus-within {
+      border-color: var(--border-strong);
+    }
+
+    .composer-input {
+      width: 100%;
+      border: none;
+      outline: none;
+      resize: none;
+      background: transparent;
+      color: var(--ink-primary);
+      font-family: var(--font-sans);
+      font-size: 15.5px;
+      line-height: 1.45;
+      min-height: 26px;
+      max-height: 120px;
+      padding: 0;
+    }
+
+    .composer-input::placeholder {
+      color: var(--ink-placeholder);
+    }
+
+    .composer-footer {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      min-height: 36px;
+    }
+
+    .footer-left {
+      display: inline-flex;
+      align-items: center;
+      gap: 10px;
+      flex-shrink: 0;
+    }
+
+    .icon-btn {
+      appearance: none;
+      border: none;
+      background: transparent;
+      color: var(--ink-primary);
+      width: 28px;
+      height: 28px;
+      border-radius: 8px;
+      display: inline-grid;
+      place-items: center;
+      cursor: pointer;
+      padding: 0;
+      transition: background 140ms ease;
+    }
+
+    .icon-btn:hover {
+      background: var(--bg-pill);
+    }
+
+    .access-label {
+      font-size: 13.5px;
+      font-weight: 500;
+      color: var(--codex-full-access);
+      letter-spacing: -0.01em;
+      user-select: none;
+      white-space: nowrap;
+    }
+
+    /* ============================================================
+       THE MIDDLE SLOT: 4 INDEPENDENT METRIC BUTTONS
+       ============================================================ */
+    .hud-slot-wrapper {
+      flex: 1;
+      min-width: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 2px 4px;
+      border-radius: 10px;
+      position: relative;
+    }
+
+    body[data-guide="on"] .hud-slot-wrapper {
+      outline: 2px solid #f04438;
+      outline-offset: 2px;
+    }
+
+    body[data-guide="on"] .hud-slot-wrapper::after {
+      content: "目标贴合区";
+      position: absolute;
+      top: -19px;
+      left: 6px;
+      font-size: 10px;
+      font-weight: 600;
+      color: #f04438;
+      background: var(--bg-composer);
+      padding: 0 5px;
+      border-radius: 4px;
+      pointer-events: none;
+    }
+
+    .hud-group {
+      display: inline-flex;
+      align-items: center;
+      max-width: 100%;
+      overflow-x: auto;
+      scrollbar-width: none;
+    }
+    .hud-group::-webkit-scrollbar {
+      display: none;
+    }
+
+    .hud-btn {
+      appearance: none;
+      border: 1px solid transparent;
+      background: transparent;
+      color: var(--ink-secondary);
+      font-family: var(--font-sans);
+      font-size: 12px;
+      line-height: 1;
+      height: 28px;
+      padding: 0 8px;
+      border-radius: 8px;
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      cursor: pointer;
+      white-space: nowrap;
+      flex-shrink: 0;
+      transition:
+        background 150ms ease,
+        border-color 150ms ease,
+        color 150ms ease,
+        transform 130ms var(--ease-out-expo),
+        box-shadow 150ms ease;
+    }
+
+    .hud-btn:focus-visible {
+      outline: 2px solid var(--sem-info);
+      outline-offset: 1px;
+    }
+
+    .hud-btn:active {
+      transform: scale(0.97);
+    }
+
+    /* Unique anchor names so each popover tethers directly above its own button */
+    #btn-speed  { anchor-name: --anchor-speed; }
+    #btn-ctx    { anchor-name: --anchor-ctx; }
+    #btn-cache  { anchor-name: --anchor-cache; }
+    #btn-tokens { anchor-name: --anchor-tokens; }
+
+    .hud-sep {
+      width: 1px;
+      height: 11px;
+      background: var(--border-hairline);
+      flex-shrink: 0;
+      margin: 0 2px;
+    }
+
+    .hud-label {
+      color: var(--ink-muted);
+      font-size: 11px;
+      font-weight: 400;
+    }
+
+    .hud-val {
+      color: var(--ink-primary);
+      font-weight: 500;
+      letter-spacing: -0.02em;
+    }
+
+    .hud-val.is-ok { color: var(--sem-ok); }
+    .hud-val.is-warn { color: var(--sem-warn); }
+    .hud-val.is-danger { color: var(--sem-danger); }
+
+    .live-dot {
+      width: 6px;
+      height: 6px;
+      border-radius: 999px;
+      background: var(--sem-ok);
+      flex-shrink: 0;
+      position: relative;
+    }
+
+    body[data-scenario="streaming"] .live-dot::after {
+      content: "";
+      position: absolute;
+      inset: -3px;
+      border-radius: 999px;
+      border: 1.5px solid var(--sem-ok);
+      animation: pulse-ring 1.3s ease-out infinite;
+    }
+
+    body[data-scenario="cache-drop"] .live-dot { background: var(--sem-danger); }
+    body[data-scenario="high-ctx"] .live-dot { background: var(--sem-warn); }
+
+    @keyframes pulse-ring {
+      0% { transform: scale(0.8); opacity: 0.85; }
+      100% { transform: scale(2.1); opacity: 0; }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      body[data-scenario="streaming"] .live-dot::after,
+      body[data-scenario="streaming"] .streaming-caret {
+        animation: none;
+      }
+    }
+
+    .mini-bar {
+      width: 24px;
+      height: 4px;
+      border-radius: 999px;
+      background: var(--border-hairline);
+      overflow: hidden;
+      flex-shrink: 0;
+    }
+
+    .mini-bar-fill {
+      height: 100%;
+      border-radius: 999px;
+      background: var(--ink-primary);
+      transition: width 320ms var(--ease-out-expo), background-color 220ms ease;
+    }
+
+    .mini-bar-fill.is-warn { background: var(--sem-warn); }
+    .mini-bar-fill.is-danger { background: var(--sem-danger); }
+
+    .hud-sparkline {
+      display: none;
+      width: 26px;
+      height: 12px;
+      flex-shrink: 0;
+      overflow: visible;
+    }
+
+    /* ---- Style A: Native Hairline Buttons (Default) ---- */
+    body[data-style="native"] .hud-group {
+      gap: 1px;
+    }
+    body[data-style="native"] .hud-btn:hover {
+      background: var(--bg-pill);
+    }
+    body[data-style="native"] .hud-btn[data-open="true"] {
+      background: var(--bg-pill-active);
+      color: var(--ink-primary);
+    }
+
+    /* ---- Style B: 4 Independent Pills ---- */
+    body[data-style="pills"] .hud-group {
+      gap: 5px;
+    }
+    body[data-style="pills"] .hud-sep {
+      display: none;
+    }
+    body[data-style="pills"] .hud-btn {
+      background: var(--bg-pill);
+      border-color: var(--border-subtle);
+      border-radius: 999px;
+      padding: 0 9px;
+      height: 27px;
+    }
+    body[data-style="pills"] .hud-btn:hover {
+      background: var(--bg-pill-hover);
+      border-color: var(--border-hairline);
+    }
+    body[data-style="pills"] .hud-btn[data-open="true"] {
+      background: var(--bg-elevated);
+      border-color: var(--border-strong);
+      box-shadow: 0 1px 4px rgba(0, 0, 0, 0.08);
+    }
+
+    /* ---- Style C: Segmented Instrument Strip ---- */
+    body[data-style="segmented"] .hud-group {
+      background: var(--bg-subtle);
+      border: 1px solid var(--border-hairline);
+      border-radius: 10px;
+      padding: 2px;
+      gap: 1px;
+    }
+    body[data-style="segmented"] .hud-sep {
+      height: 12px;
+      margin: 0;
+    }
+    body[data-style="segmented"] .hud-btn {
+      height: 26px;
+      border-radius: 7px;
+      padding: 0 8px;
+    }
+    body[data-style="segmented"] .hud-btn:hover {
+      background: var(--bg-pill-hover);
+    }
+    body[data-style="segmented"] .hud-btn[data-open="true"] {
+      background: var(--bg-elevated);
+      box-shadow: 0 1px 3px rgba(0, 0, 0, 0.09);
+    }
+    body[data-style="segmented"] .hud-sparkline {
+      display: inline-block;
+    }
+
+    /* ---- Style D: Ultra-Compact Chips (strip text labels, keep values + visual cues) ---- */
+    body[data-style="compact"] .hud-group {
+      gap: 4px;
+    }
+    body[data-style="compact"] .hud-sep {
+      display: none;
+    }
+    body[data-style="compact"] .hud-label-hide-compact {
+      display: none;
+    }
+    body[data-style="compact"] .hud-btn {
+      background: transparent;
+      border-color: var(--border-subtle);
+      border-radius: 999px;
+      padding: 0 8px;
+      height: 26px;
+      gap: 4px;
+    }
+    body[data-style="compact"] .hud-btn:hover {
+      background: var(--bg-pill);
+      border-color: var(--border-hairline);
+    }
+    body[data-style="compact"] .hud-btn[data-open="true"] {
+      background: var(--bg-pill-active);
+      border-color: var(--border-strong);
+    }
+
+    /* Right side of Codex footer */
+    .footer-right {
+      display: inline-flex;
+      align-items: center;
+      gap: 11px;
+      flex-shrink: 0;
+    }
+
+    .native-ctx-ring {
+      width: 17px;
+      height: 17px;
+      display: inline-grid;
+      place-items: center;
+      color: var(--ink-muted);
+      flex-shrink: 0;
+    }
+
+    .model-chip {
+      display: inline-flex;
+      align-items: baseline;
+      gap: 5px;
+      font-size: 13.5px;
+      font-weight: 500;
+      color: var(--ink-primary);
+      white-space: nowrap;
+      user-select: none;
+    }
+
+    .model-effort {
+      color: var(--ink-muted);
+      font-weight: 400;
+    }
+
+    .voice-btn {
+      appearance: none;
+      border: none;
+      width: 34px;
+      height: 34px;
+      border-radius: 999px;
+      background: var(--codex-voice-bg);
+      color: var(--codex-voice-fg);
+      display: inline-grid;
+      place-items: center;
+      cursor: pointer;
+      transition: transform 140ms var(--ease-out-expo), opacity 140ms ease;
+    }
+
+    .voice-btn:hover { opacity: 0.9; }
+    .voice-btn:active { transform: scale(0.95); }
+
+    /* ============================================================
+       4 FOCUSED, INDIVIDUALLY-ANCHORED METRIC POPOVERS
+       ============================================================ */
+    .metric-popover {
+      width: min(312px, calc(100vw - 24px));
+      padding: 0;
+      border: 1px solid var(--border-hairline);
+      border-radius: var(--radius-popover);
+      background: var(--bg-elevated);
+      color: var(--ink-primary);
+      box-shadow: var(--shadow-popover);
+      overflow: hidden;
+
+      opacity: 0;
+      transition-property: opacity, transform, display, overlay;
+      transition-duration: 190ms;
+      transition-timing-function: var(--ease-out-expo);
+      transition-behavior: allow-discrete;
+
+      @media (prefers-reduced-motion: no-preference) {
+        transform: translateY(6px) scale(0.975);
+      }
+    }
+
+    #pop-speed  { position-anchor: --anchor-speed; }
+    #pop-ctx    { position-anchor: --anchor-ctx; }
+    #pop-cache  { position-anchor: --anchor-cache; }
+    #pop-tokens { position-anchor: --anchor-tokens; width: min(324px, calc(100vw - 24px)); }
+
+    @supports (position-area: block-start) {
+      .metric-popover {
+        inset: auto;
+        margin: 0;
+        margin-block-end: 12px;
+        position-area: block-start center;
+        position-try-fallbacks: flip-block, flip-inline, flip-block flip-inline;
+      }
+    }
+
+    .metric-popover:is(:popover-open, .\:popover-open) {
+      opacity: 1;
+
+      @starting-style {
+        opacity: 0;
+      }
+
+      @media (prefers-reduced-motion: no-preference) {
+        transform: translateY(0) scale(1);
+
+        @starting-style {
+          transform: translateY(6px) scale(0.975);
+        }
+      }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      .metric-popover {
+        transition-duration: 85ms;
+      }
+    }
+
+    .pop-head {
+      padding: 12px 14px 10px;
+      border-bottom: 1px solid var(--border-subtle);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+    }
+
+    .pop-head-left {
+      display: flex;
+      align-items: center;
+      gap: 7px;
+      min-width: 0;
+    }
+
+    .pop-title {
+      font-size: 12.5px;
+      font-weight: 600;
+    }
+
+    .pop-pill {
+      font-size: 10.5px;
+      font-weight: 500;
+      padding: 2px 6px;
+      border-radius: 999px;
+      background: var(--sem-ok-soft);
+      color: var(--sem-ok);
+      white-space: nowrap;
+    }
+
+    .pop-pill.is-warn {
+      background: var(--sem-warn-soft);
+      color: var(--sem-warn);
+    }
+
+    .pop-pill.is-danger {
+      background: var(--sem-danger-soft);
+      color: var(--sem-danger);
+    }
+
+    .pop-close {
+      appearance: none;
+      border: none;
+      background: transparent;
+      color: var(--ink-muted);
+      font-family: var(--font-mono);
+      font-size: 10.5px;
+      padding: 3px 6px;
+      border-radius: 6px;
+      cursor: pointer;
+    }
+
+    .pop-close:hover {
+      background: var(--bg-pill);
+      color: var(--ink-primary);
+    }
+
+    .pop-body {
+      padding: 14px;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+
+    .pop-hero {
+      display: flex;
+      align-items: baseline;
+      justify-content: space-between;
+      gap: 8px;
+    }
+
+    .pop-hero-main {
+      display: flex;
+      align-items: baseline;
+      gap: 6px;
+    }
+
+    .hero-num {
+      font-size: 24px;
+      font-weight: 600;
+      letter-spacing: -0.035em;
+      line-height: 1;
+    }
+
+    .hero-unit {
+      font-size: 12px;
+      color: var(--ink-muted);
+    }
+
+    .hero-right {
+      font-size: 11.5px;
+      color: var(--ink-secondary);
+      text-align: right;
+    }
+
+    .pop-banner {
+      display: none;
+      padding: 8px 10px;
+      border-radius: 9px;
+      font-size: 11.5px;
+      line-height: 1.45;
+    }
+    .pop-banner.is-visible { display: block; }
+    .pop-banner.is-danger { background: var(--sem-danger-soft); color: var(--sem-danger); }
+    .pop-banner.is-warn   { background: var(--sem-warn-soft); color: var(--sem-warn); }
+
+    .progress-track {
+      width: 100%;
+      height: 6px;
+      border-radius: 999px;
+      background: var(--bg-subtle);
+      overflow: hidden;
+      display: flex;
+      gap: 1px;
+    }
+
+    .seg-primary   { background: var(--ink-primary); transition: width 300ms var(--ease-out-expo), background 200ms ease; }
+    .seg-primary.is-warn   { background: var(--sem-warn); }
+    .seg-primary.is-danger { background: var(--sem-danger); }
+    .seg-ok        { background: var(--sem-ok); transition: width 300ms var(--ease-out-expo); }
+    .seg-muted     { background: var(--border-strong); transition: width 300ms var(--ease-out-expo); }
+    .seg-warn      { background: var(--sem-warn); opacity: 0.8; }
+    .seg-reasoning { background: var(--sem-reasoning); transition: width 300ms var(--ease-out-expo); }
+    .seg-visible   { background: var(--sem-info); transition: width 300ms var(--ease-out-expo); }
+
+    .kv-list {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+
+    .kv-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      font-size: 12px;
+      color: var(--ink-secondary);
+    }
+
+    .kv-row strong {
+      color: var(--ink-primary);
+      font-weight: 500;
+    }
+
+    .chart-box {
+      background: var(--bg-subtle);
+      border: 1px solid var(--border-subtle);
+      border-radius: 10px;
+      padding: 9px 10px;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+
+    .chart-caption {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      font-size: 10.5px;
+      color: var(--ink-muted);
+    }
+
+    .bar-series {
+      height: 36px;
+      display: grid;
+      grid-template-columns: repeat(7, minmax(0, 1fr));
+      align-items: end;
+      gap: 5px;
+    }
+
+    .bar-col {
+      background: var(--border-strong);
+      border-radius: 3px 3px 2px 2px;
+      min-height: 4px;
+      transition: height 280ms var(--ease-out-expo), background 200ms ease;
+    }
+
+    .bar-col.is-latest { background: var(--ink-primary); }
+    .bar-col.is-ok     { background: var(--sem-ok); }
+    .bar-col.is-warn   { background: var(--sem-warn); }
+    .bar-col.is-danger { background: var(--sem-danger); }
+
+    .pop-footer {
+      padding: 9px 14px;
+      background: var(--bg-subtle);
+      border-top: 1px solid var(--border-subtle);
+      font-size: 11px;
+      color: var(--ink-secondary);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+    }
+
+    .quota-block {
+      padding: 10px 14px 12px;
+      background: var(--bg-subtle);
+      border-top: 1px solid var(--border-subtle);
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+
+    .quota-item {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+
+    .quota-row {
+      display: flex;
+      justify-content: space-between;
+      font-size: 11px;
+      color: var(--ink-secondary);
+    }
+
+    .legend-dot {
+      display: inline-block;
+      width: 7px;
+      height: 7px;
+      border-radius: 2px;
+      margin-right: 4px;
+      vertical-align: 0;
+    }
+
+    /* ============================================================
+       FLOATING TWEAKS PANEL
+       ============================================================ */
+    .tweaks-wrap {
+      position: fixed;
+      right: 16px;
+      bottom: 16px;
+      z-index: 40;
+      display: flex;
+      flex-direction: column;
+      align-items: flex-end;
+      gap: 8px;
+    }
+
+    .tweaks-toggle {
+      appearance: none;
+      border: 1px solid var(--border-hairline);
+      background: var(--bg-elevated);
+      color: var(--ink-primary);
+      font-family: inherit;
+      font-size: 12px;
+      font-weight: 500;
+      padding: 7px 12px;
+      border-radius: 999px;
+      box-shadow: var(--shadow-tweaks);
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .tweaks-toggle:hover {
+      border-color: var(--border-strong);
+    }
+
+    .tweaks-panel {
+      width: 268px;
+      background: var(--bg-elevated);
+      border: 1px solid var(--border-hairline);
+      border-radius: 14px;
+      box-shadow: var(--shadow-tweaks);
+      padding: 13px 14px;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+
+    .tweaks-panel[hidden] {
+      display: none;
+    }
+
+    .tweaks-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      font-size: 12px;
+      font-weight: 600;
+    }
+
+    .tweak-group {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+
+    .tweak-label {
+      font-size: 11px;
+      color: var(--ink-muted);
+      display: flex;
+      justify-content: space-between;
+    }
+
+    .seg-control {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 3px;
+      background: var(--bg-subtle);
+      padding: 3px;
+      border-radius: 9px;
+      border: 1px solid var(--border-subtle);
+    }
+
+    .seg-btn {
+      appearance: none;
+      border: none;
+      background: transparent;
+      color: var(--ink-secondary);
+      font-family: inherit;
+      font-size: 11.5px;
+      padding: 5px 6px;
+      border-radius: 6px;
+      cursor: pointer;
+    }
+
+    .seg-btn[aria-pressed="true"] {
+      background: var(--bg-elevated);
+      color: var(--ink-primary);
+      font-weight: 500;
+      box-shadow: 0 1px 2px rgba(0, 0, 0, 0.08);
+    }
+
+    .tweak-switch-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      font-size: 12px;
+      color: var(--ink-secondary);
+      cursor: pointer;
+    }
+
+    .tweak-switch-row input {
+      accent-color: var(--ink-primary);
+      width: 15px;
+      height: 15px;
+      cursor: pointer;
+    }
+  </style>
+</head>
+<body data-style="native" data-scenario="streaming" data-guide="off">
+  <div class="app-shell">
+    <!-- Sidebar -->
+    <aside class="sidebar" aria-label="会话列表（模拟）">
+      <div class="win-header">
+        <span class="brand-mark">
+          <span class="brand-dot">C</span>
+          Codex Desktop
+        </span>
+      </div>
+
+      <div class="sidebar-section-label">codex-dashboard</div>
+      <div class="thread-list">
+        <div class="thread-item is-active">
+          <span>独立按钮版 HUD 原型</span>
+          <span class="thread-meta mono">v2</span>
+        </div>
+        <div class="thread-item">
+          <span>Rollout JSONL 增量解析</span>
+          <span class="thread-meta mono">89%</span>
+        </div>
+        <div class="thread-item">
+          <span>Windows Overlay 对齐测试</span>
+          <span class="thread-meta mono">76%</span>
+        </div>
+      </div>
+
+      <div class="sidebar-footer">
+        v2 改进：将 4 项指标拆为 <strong>4 个独立按钮</strong>，点哪个只在对应按钮正上方弹出该项专项卡，切点其他按钮自动互斥收起。
+      </div>
+    </aside>
+
+    <!-- Main Workspace -->
+    <main class="workspace">
+      <header class="workspace-topbar">
+        <div class="topbar-left">
+          <span class="topbar-title">Composer HUD 原型 · v2 独立按钮版</span>
+          <span class="topbar-badge mono">gpt-6.2-sol · high</span>
+        </div>
+
+        <nav class="style-quickbar" aria-label="切换 4 按钮外观风格">
+          <button type="button" class="style-tab" data-set-style="native" aria-pressed="true">A 原生融入</button>
+          <button type="button" class="style-tab" data-set-style="pills" aria-pressed="false">B 独立胶囊</button>
+          <button type="button" class="style-tab" data-set-style="segmented" aria-pressed="false">C 分段仪表</button>
+          <button type="button" class="style-tab" data-set-style="compact" aria-pressed="false">D 极简紧凑</button>
+        </nav>
+      </header>
+
+      <section class="chat-stage" aria-label="模拟对话上下文">
+        <div class="msg-user">
+          把速度、上下文、缓存命中率和 Token 分成 4 个独立按钮贴在底部输入框中间，点开各自只看各自的数据。
+        </div>
+
+        <div class="msg-assistant">
+          <div class="msg-step-row">
+            <span class="msg-step-pill mono">4 独立按钮</span>
+            <span class="msg-step-pill mono">按需弹出</span>
+            <span class="msg-step-pill mono">互斥自动收起</span>
+          </div>
+          <div class="msg-body">
+            已把底部中间区拆成 4 个独立微按钮：<strong>速度</strong>、<strong>上下文</strong>、<strong>缓存</strong>、<strong>Token</strong>。
+            逐个点它们试试——每个专项卡片会精准锚定在自己按钮正上方，横向只占 ~310px，轻巧不遮挡视野。<span class="streaming-caret" aria-hidden="true"></span>
+          </div>
+        </div>
+
+        <div class="stage-note">
+          <span><strong>切换运行场景：</strong>观察 4 颗按钮各自的颜色状态与弹出卡里的实时趋势。</span>
+          <div class="scenario-pills" role="group" aria-label="模拟运行场景">
+            <button type="button" class="scenario-chip" data-set-scenario="streaming" aria-pressed="true">实时生成中</button>
+            <button type="button" class="scenario-chip" data-set-scenario="idle" aria-pressed="false">空闲已就绪</button>
+            <button type="button" class="scenario-chip" data-set-scenario="cache-drop" aria-pressed="false">缓存骤降预警</button>
+            <button type="button" class="scenario-chip" data-set-scenario="high-ctx" aria-pressed="false">高上下文 / 压缩</button>
+          </div>
+        </div>
+      </section>
+
+      <!-- ========================================================
+           CODEX DESKTOP COMPOSER (4 INDEPENDENT BUTTONS IN MIDDLE)
+           ======================================================== -->
+      <section class="composer-dock" aria-label="Codex 输入框模拟">
+        <div class="composer-card">
+          <textarea
+            class="composer-input"
+            rows="1"
+            placeholder="和 Codex 一起工作"
+            aria-label="和 Codex 一起工作"
+          ></textarea>
+
+          <div class="composer-footer">
+            <!-- Left: + 完全访问 -->
+            <div class="footer-left">
+              <button type="button" class="icon-btn" aria-label="添加附件">
+                <svg width="17" height="17" viewBox="0 0 18 18" fill="none" aria-hidden="true">
+                  <path d="M9 3.5V14.5M3.5 9H14.5" stroke="currentColor" stroke-width="1.65" stroke-linecap="round"/>
+                </svg>
+              </button>
+              <span class="access-label">完全访问</span>
+            </div>
+
+            <!-- Middle Target Slot: 4 INDEPENDENT BUTTONS -->
+            <div class="hud-slot-wrapper">
+              <div class="hud-group" role="group" aria-label="Codex 实时指标按钮组">
+                <!-- 1. Speed Button -->
+                <button
+                  type="button"
+                  id="btn-speed"
+                  class="hud-btn"
+                  commandfor="pop-speed"
+                  command="toggle-popover"
+                  aria-expanded="false"
+                  aria-label="查看模型速度与 TTFT 详情"
+                >
+                  <span class="live-dot" aria-hidden="true"></span>
+                  <svg class="hud-sparkline" viewBox="0 0 26 12" fill="none" aria-hidden="true">
+                    <path id="btn-spark-path" d="M1 9 L5 7 L9 8 L13 4 L17 5 L21 2 L25 3" stroke="currentColor" stroke-width="1.35" stroke-linecap="round" stroke-linejoin="round"/>
+                  </svg>
+                  <span id="hud-tps" class="hud-val mono">48.6</span>
+                  <span class="hud-label mono">t/s</span>
+                </button>
+
+                <span class="hud-sep" aria-hidden="true"></span>
+
+                <!-- 2. Context Button -->
+                <button
+                  type="button"
+                  id="btn-ctx"
+                  class="hud-btn"
+                  commandfor="pop-ctx"
+                  command="toggle-popover"
+                  aria-expanded="false"
+                  aria-label="查看当前上下文窗口占用详情"
+                >
+                  <span class="hud-label hud-label-hide-compact">Ctx</span>
+                  <span class="mini-bar" aria-hidden="true">
+                    <span id="hud-ctx-bar" class="mini-bar-fill" style="width: 18%;"></span>
+                  </span>
+                  <span id="hud-ctx-pct" class="hud-val mono">18%</span>
+                </button>
+
+                <span class="hud-sep" aria-hidden="true"></span>
+
+                <!-- 3. Cache Hit Rate Button -->
+                <button
+                  type="button"
+                  id="btn-cache"
+                  class="hud-btn"
+                  commandfor="pop-cache"
+                  command="toggle-popover"
+                  aria-expanded="false"
+                  aria-label="查看 Prompt 缓存命中率详情"
+                >
+                  <span class="hud-label hud-label-hide-compact">Cache</span>
+                  <span id="hud-cache-pct" class="hud-val mono is-ok">94%</span>
+                </button>
+
+                <span class="hud-sep" aria-hidden="true"></span>
+
+                <!-- 4. Tokens & Quota Button -->
+                <button
+                  type="button"
+                  id="btn-tokens"
+                  class="hud-btn"
+                  commandfor="pop-tokens"
+                  command="toggle-popover"
+                  aria-expanded="false"
+                  aria-label="查看 Token 消耗与 5h/7d 额度详情"
+                >
+                  <span id="hud-tokens" class="hud-val mono">142.8k</span>
+                  <span class="hud-label hud-label-hide-compact">tok</span>
+                </button>
+              </div>
+            </div>
+
+            <!-- Right: Context Ring + GPT-6.2 Sol 高 + Mic + Voice -->
+            <div class="footer-right">
+              <span class="native-ctx-ring" title="Codex 原生上下文圆环">
+                <svg width="16" height="16" viewBox="0 0 18 18" fill="none" aria-hidden="true">
+                  <circle cx="9" cy="9" r="6.5" stroke="currentColor" stroke-opacity="0.25" stroke-width="2"/>
+                  <circle id="native-ring-arc" cx="9" cy="9" r="6.5" stroke="currentColor" stroke-width="2"
+                    stroke-linecap="round" stroke-dasharray="40.84" stroke-dashoffset="33.5"
+                    transform="rotate(-90 9 9)"/>
+                </svg>
+              </span>
+
+              <span class="model-chip">
+                <span>GPT-6.2 Sol</span>
+                <span class="model-effort">高</span>
+              </span>
+
+              <button type="button" class="icon-btn" aria-label="语音输入">
+                <svg width="16" height="16" viewBox="0 0 18 18" fill="none" aria-hidden="true">
+                  <rect x="6.5" y="2.5" width="5" height="8" rx="2.5" stroke="currentColor" stroke-width="1.5"/>
+                  <path d="M4.2 8.8a4.8 4.8 0 0 0 9.6 0M9 13.6V16" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+                </svg>
+              </button>
+
+              <button type="button" class="voice-btn" aria-label="实时语音对话">
+                <svg width="15" height="15" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+                  <path d="M3 6.5V9.5M6 4.2V11.8M9 2.8V13.2M12 5.2V10.8" stroke="currentColor" stroke-width="1.75" stroke-linecap="round"/>
+                </svg>
+              </button>
+            </div>
+          </div>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <!-- ============================================================
+       POPOVER 1: MODEL SPEED
+       ============================================================ -->
+  <div id="pop-speed" class="metric-popover" popover="auto" role="region" aria-label="模型速度详情">
+    <div class="pop-head">
+      <div class="pop-head-left">
+        <span class="pop-title">模型速度</span>
+        <span id="sp-pill" class="pop-pill">生成中</span>
+      </div>
+      <button type="button" class="pop-close" commandfor="pop-speed" command="hide-popover" aria-label="关闭模型速度卡片">ESC</button>
+    </div>
+
+    <div class="pop-body">
+      <div class="pop-hero">
+        <div class="pop-hero-main">
+          <span id="sp-tps" class="hero-num mono">48.6</span>
+          <span class="hero-unit mono">tok/s</span>
+        </div>
+        <div class="hero-right mono">TTFT <strong id="sp-ttft">1.18s</strong></div>
+      </div>
+
+      <div class="chart-box">
+        <div class="chart-caption">
+          <span>最近 7 次请求吞吐趋势</span>
+          <span id="sp-range" class="mono">39 – 51 t/s</span>
+        </div>
+        <div id="sp-bars" class="bar-series" aria-hidden="true"></div>
+      </div>
+
+      <div class="kv-list">
+        <div class="kv-row">
+          <span>耗时占比（模型 vs 工具）</span>
+          <span id="sp-split-text" class="mono"><strong>6.8s</strong> / 3.1s</span>
+        </div>
+        <div class="progress-track" aria-hidden="true">
+          <span id="sp-llm-bar" class="seg-primary" style="width: 69%;"></span>
+          <span id="sp-tool-bar" class="seg-warn" style="width: 31%;"></span>
+        </div>
+        <div class="kv-row">
+          <span><span class="legend-dot" style="background:var(--ink-primary)"></span>纯模型往返</span>
+          <span><span class="legend-dot" style="background:var(--sem-warn)"></span>工具执行不计入 tok/s</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="pop-footer">
+      <span id="sp-note">单步有效吞吐（已剔除 exec/MCP 耗时）</span>
+    </div>
+  </div>
+
+  <!-- ============================================================
+       POPOVER 2: CONTEXT WINDOW
+       ============================================================ -->
+  <div id="pop-ctx" class="metric-popover" popover="auto" role="region" aria-label="上下文占用详情">
+    <div class="pop-head">
+      <div class="pop-head-left">
+        <span class="pop-title">当前上下文快照</span>
+        <span id="ctx-pill" class="pop-pill">余量充足</span>
+      </div>
+      <button type="button" class="pop-close" commandfor="pop-ctx" command="hide-popover" aria-label="关闭上下文卡片">ESC</button>
+    </div>
+
+    <div class="pop-body">
+      <div id="ctx-banner" class="pop-banner"></div>
+
+      <div class="pop-hero">
+        <div class="pop-hero-main">
+          <span id="ctx-pct" class="hero-num mono">18.0%</span>
+          <span id="ctx-used" class="hero-unit mono">85.4k / 475k</span>
+        </div>
+        <div id="ctx-delta" class="hero-right mono">+4.2k</div>
+      </div>
+
+      <div class="progress-track" aria-hidden="true">
+        <span id="ctx-bar" class="seg-primary" style="width: 18%;"></span>
+      </div>
+
+      <div class="chart-box">
+        <div class="chart-caption">
+          <span>最近 7 步上下文水位变化</span>
+          <span id="ctx-compact-tag" class="mono">未触发压缩</span>
+        </div>
+        <div id="ctx-bars" class="bar-series" aria-hidden="true"></div>
+      </div>
+
+      <div class="kv-list">
+        <div class="kv-row">
+          <span>模型有效窗口</span>
+          <strong class="mono">475,000 tokens</strong>
+        </div>
+        <div class="kv-row">
+          <span>剩余可用空间</span>
+          <strong id="ctx-remain" class="mono">389.6k tokens</strong>
+        </div>
+      </div>
+    </div>
+
+    <div class="pop-footer">
+      <span>口径：最近一次请求 input_tokens（非会话累计）</span>
+    </div>
+  </div>
+
+  <!-- ============================================================
+       POPOVER 3: CACHE HIT RATE
+       ============================================================ -->
+  <div id="pop-cache" class="metric-popover" popover="auto" role="region" aria-label="缓存命中率详情">
+    <div class="pop-head">
+      <div class="pop-head-left">
+        <span class="pop-title">Prompt 缓存命中率</span>
+        <span id="ca-pill" class="pop-pill">高命中</span>
+      </div>
+      <button type="button" class="pop-close" commandfor="pop-cache" command="hide-popover" aria-label="关闭缓存命中率卡片">ESC</button>
+    </div>
+
+    <div class="pop-body">
+      <div id="ca-banner" class="pop-banner"></div>
+
+      <div class="pop-hero">
+        <div class="pop-hero-main">
+          <span id="ca-pct" class="hero-num mono">94.2%</span>
+          <span class="hero-unit">加权命中</span>
+        </div>
+        <div class="hero-right mono">写入 <strong id="ca-write">0</strong></div>
+      </div>
+
+      <div class="progress-track" aria-hidden="true">
+        <span id="ca-hit-bar" class="seg-ok" style="width: 94.2%;"></span>
+        <span id="ca-miss-bar" class="seg-muted" style="width: 5.8%;"></span>
+      </div>
+
+      <div class="chart-box">
+        <div class="chart-caption">
+          <span>最近 7 步单次命中率</span>
+          <span id="ca-latest-step" class="mono">最近一步 96%</span>
+        </div>
+        <div id="ca-bars" class="bar-series" aria-hidden="true"></div>
+      </div>
+
+      <div class="kv-list">
+        <div class="kv-row">
+          <span><span class="legend-dot" style="background:var(--sem-ok)"></span>命中缓存 (cached)</span>
+          <strong id="ca-cached" class="mono">130.1k</strong>
+        </div>
+        <div class="kv-row">
+          <span><span class="legend-dot" style="background:var(--border-strong)"></span>未命中输入 (uncached)</span>
+          <strong id="ca-uncached" class="mono">8.0k</strong>
+        </div>
+      </div>
+    </div>
+
+    <div class="pop-footer">
+      <span>公式：Σcached_input_tokens / Σinput_tokens</span>
+    </div>
+  </div>
+
+  <!-- ============================================================
+       POPOVER 4: TOKEN CONSUMPTION & QUOTA
+       ============================================================ -->
+  <div id="pop-tokens" class="metric-popover" popover="auto" role="region" aria-label="Token 消耗与额度详情">
+    <div class="pop-head">
+      <div class="pop-head-left">
+        <span class="pop-title">Token 消耗与配额</span>
+        <span class="pop-pill">已去重推理</span>
+      </div>
+      <button type="button" class="pop-close" commandfor="pop-tokens" command="hide-popover" aria-label="关闭 Token 消耗卡片">ESC</button>
+    </div>
+
+    <div class="pop-body">
+      <div class="pop-hero">
+        <div class="pop-hero-main">
+          <span id="tk-total" class="hero-num mono">142.8k</span>
+          <span class="hero-unit">总计</span>
+        </div>
+        <div class="hero-right mono">本会话累计</div>
+      </div>
+
+      <div class="kv-list">
+        <div class="kv-row">
+          <span>总输入 (Input)</span>
+          <strong id="tk-input" class="mono">138.1k</strong>
+        </div>
+        <div class="kv-row">
+          <span>总输出 (Output · 已含推理)</span>
+          <strong id="tk-output" class="mono">4.7k</strong>
+        </div>
+      </div>
+
+      <div class="chart-box">
+        <div class="chart-caption">
+          <span>输出构成拆分（不重复计数）</span>
+          <span id="tk-reas-pct" class="mono">推理占 40%</span>
+        </div>
+        <div class="progress-track" aria-hidden="true">
+          <span id="tk-reas-bar" class="seg-reasoning" style="width: 40%;"></span>
+          <span id="tk-vis-bar" class="seg-visible" style="width: 60%;"></span>
+        </div>
+        <div class="kv-row" style="font-size:11.5px">
+          <span><span class="legend-dot" style="background:var(--sem-reasoning)"></span>推理 <strong id="tk-reas" class="mono">1.9k</strong></span>
+          <span><span class="legend-dot" style="background:var(--sem-info)"></span>可见输出 <strong id="tk-vis" class="mono">2.8k</strong></span>
+        </div>
+      </div>
+    </div>
+
+    <div class="quota-block">
+      <div class="quota-item">
+        <div class="quota-row">
+          <span>5h 额度窗口</span>
+          <span class="mono">10% · 2h18m 后重置</span>
+        </div>
+        <div class="progress-track">
+          <span class="seg-primary" style="width: 10%;"></span>
+        </div>
+      </div>
+      <div class="quota-item">
+        <div class="quota-row">
+          <span>7d 额度窗口</span>
+          <span class="mono">8% · 6d 后重置</span>
+        </div>
+        <div class="progress-track">
+          <span class="seg-primary" style="width: 8%;"></span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============================================================
+       FLOATING TWEAKS PANEL
+       ============================================================ -->
+  <div class="tweaks-wrap">
+    <div id="tweaks-panel" class="tweaks-panel" hidden>
+      <div class="tweaks-head">
+        <span>Tweaks</span>
+        <button type="button" id="tweaks-close" class="pop-close">收起</button>
+      </div>
+
+      <div class="tweak-group">
+        <div class="tweak-label"><span>外观主题</span><span id="theme-status" class="mono">跟随系统</span></div>
+        <div class="seg-control" role="group" aria-label="外观主题">
+          <button type="button" class="seg-btn" data-set-theme="system" aria-pressed="true">跟随系统</button>
+          <button type="button" class="seg-btn" data-set-theme="light" aria-pressed="false">浅色</button>
+          <button type="button" class="seg-btn" data-set-theme="dark" aria-pressed="false">深色</button>
+        </div>
+      </div>
+
+      <div class="tweak-group">
+        <div class="tweak-label"><span>定位参考线</span><span>同截图红框</span></div>
+        <label class="tweak-switch-row">
+          <span>显示红框贴合范围</span>
+          <input type="checkbox" id="toggle-guide" />
+        </label>
+      </div>
+    </div>
+
+    <button type="button" id="tweaks-toggle" class="tweaks-toggle" aria-expanded="false" aria-controls="tweaks-panel">
+      <svg width="14" height="14" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+        <path d="M2.5 4.5H13.5M2.5 8H13.5M2.5 11.5H13.5" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/>
+        <circle cx="5.5" cy="4.5" r="1.4" fill="currentColor"/>
+        <circle cx="10.5" cy="8" r="1.4" fill="currentColor"/>
+        <circle cx="7" cy="11.5" r="1.4" fill="currentColor"/>
+      </svg>
+      Tweaks
+    </button>
+  </div>
+
+  <!-- Conditional polyfills per modern-web-guidance -->
+  <script type="module">
+    if (!Object.hasOwn(HTMLElement.prototype, "popover")) {
+      import("https://unpkg.com/@oddbird/popover-polyfill@latest/dist/popover.min.js");
+    }
+    if (!("commandForElement" in HTMLButtonElement.prototype)) {
+      import("https://esm.run/invokers-polyfill");
+    }
+  </script>
+
+  <script>
+    const SCENARIOS = {
+      streaming: {
+        tps: 48.6,
+        ttft: "1.18s",
+        speedPill: { text: "生成中", tone: "ok" },
+        speedRange: "39 – 51 t/s",
+        speedBars: [64, 72, 68, 84, 79, 92, 95],
+        llmSec: "6.8s",
+        toolSec: "3.1s",
+        llmPct: 69,
+        speedNote: "单步有效吞吐（已剔除 exec/MCP 耗时）",
+        spark: "M1 9 L5 7 L9 8 L13 4 L17 5 L21 2 L25 3",
+
+        ctxPct: 18.0,
+        ctxUsed: "85.4k / 475k",
+        ctxRemain: "389.6k tokens",
+        ctxDelta: "+4.2k",
+        ctxPill: { text: "余量充足", tone: "ok" },
+        ctxCompact: "未触发压缩",
+        ctxBanner: null,
+        ctxBars: [18, 22, 27, 32, 37, 42, 46],
+
+        cachePct: 94.2,
+        cachePill: { text: "高命中", tone: "ok" },
+        cacheWrite: "0",
+        cacheLatest: "最近一步 96%",
+        cacheCached: "130.1k",
+        cacheUncached: "8.0k",
+        cacheBanner: null,
+        cacheBars: [52, 88, 92, 93, 95, 94, 96],
+
+        totalTok: "142.8k",
+        inputTok: "138.1k",
+        outTok: "4.7k",
+        reasTok: "1.9k",
+        visTok: "2.8k",
+        reasPct: 40
+      },
+      idle: {
+        tps: 44.2,
+        ttft: "0.92s",
+        speedPill: { text: "空闲 · 上轮", tone: "ok" },
+        speedRange: "39 – 46 t/s",
+        speedBars: [72, 76, 74, 80, 82, 85, 84],
+        llmSec: "5.2s",
+        toolSec: "1.4s",
+        llmPct: 79,
+        speedNote: "展示最近一次已完成回合的平均值",
+        spark: "M1 7 L5 6 L9 6 L13 5 L17 5 L21 4 L25 4",
+
+        ctxPct: 14.5,
+        ctxUsed: "68.9k / 475k",
+        ctxRemain: "406.1k tokens",
+        ctxDelta: "已稳定",
+        ctxPill: { text: "健康", tone: "ok" },
+        ctxCompact: "未触发压缩",
+        ctxBanner: null,
+        ctxBars: [16, 20, 24, 28, 31, 35, 36],
+
+        cachePct: 96.4,
+        cachePill: { text: "极佳", tone: "ok" },
+        cacheWrite: "0",
+        cacheLatest: "最近一步 97%",
+        cacheCached: "102.4k",
+        cacheUncached: "3.8k",
+        cacheBanner: null,
+        cacheBars: [58, 91, 95, 96, 97, 96, 97],
+
+        totalTok: "109.6k",
+        inputTok: "106.2k",
+        outTok: "3.4k",
+        reasTok: "1.2k",
+        visTok: "2.2k",
+        reasPct: 35
+      },
+      "cache-drop": {
+        tps: 31.4,
+        ttft: "4.62s",
+        speedPill: { text: "首字偏慢", tone: "warn" },
+        speedRange: "31 – 49 t/s",
+        speedBars: [88, 92, 90, 86, 62, 54, 48],
+        llmSec: "11.4s",
+        toolSec: "2.0s",
+        llmPct: 85,
+        speedNote: "前缀缓存失效导致预填充时间拉长",
+        spark: "M1 2 L5 3 L9 3 L13 4 L17 8 L21 10 L25 11",
+
+        ctxPct: 42.1,
+        ctxUsed: "200.1k / 475k",
+        ctxRemain: "274.9k tokens",
+        ctxDelta: "+18.6k",
+        ctxPill: { text: "中等水位", tone: "ok" },
+        ctxCompact: "未触发压缩",
+        ctxBanner: null,
+        ctxBars: [34, 40, 46, 52, 58, 66, 74],
+
+        cachePct: 28.5,
+        cachePill: { text: "命中骤降", tone: "danger" },
+        cacheWrite: "143k",
+        cacheLatest: "最近一步 29%",
+        cacheCached: "57.0k",
+        cacheUncached: "143.1k",
+        cacheBanner: {
+          tone: "danger",
+          text: "命中率由 93% 骤降至 28.5%（-64.5%），疑似工具集或系统指令前缀变动。"
+        },
+        cacheBars: [91, 93, 94, 93, 92, 34, 29],
+
+        totalTok: "388.4k",
+        inputTok: "377.2k",
+        outTok: "11.2k",
+        reasTok: "5.4k",
+        visTok: "5.8k",
+        reasPct: 48
+      },
+      "high-ctx": {
+        tps: 37.8,
+        ttft: "2.84s",
+        speedPill: { text: "长上下文", tone: "warn" },
+        speedRange: "36 – 44 t/s",
+        speedBars: [84, 80, 78, 72, 68, 65, 62],
+        llmSec: "9.6s",
+        toolSec: "4.3s",
+        llmPct: 69,
+        speedNote: "上下文超过 400k，预填充略降速",
+        spark: "M1 4 L5 5 L9 5 L13 7 L17 7 L21 8 L25 8",
+
+        ctxPct: 84.6,
+        ctxUsed: "401.8k / 475k",
+        ctxRemain: "73.2k tokens",
+        ctxDelta: "曾压缩 -162k",
+        ctxPill: { text: "高水位", tone: "warn" },
+        ctxCompact: "第 5 步曾压缩",
+        ctxBanner: {
+          tone: "warn",
+          text: "当前已占 84.6% 窗口，接近自动压缩阈值；历史已压缩释放 162k tokens。"
+        },
+        ctxBars: [72, 84, 92, 96, 54, 70, 85],
+
+        cachePct: 88.1,
+        cachePill: { text: "良好", tone: "ok" },
+        cacheWrite: "12k",
+        cacheLatest: "最近一步 88%",
+        cacheCached: "354.0k",
+        cacheUncached: "47.8k",
+        cacheBanner: null,
+        cacheBars: [86, 89, 91, 90, 62, 85, 88],
+
+        totalTok: "1.42M",
+        inputTok: "1.38M",
+        outTok: "38.6k",
+        reasTok: "19.8k",
+        visTok: "18.8k",
+        reasPct: 51
+      }
+    };
+
+    const $ = (id) => document.getElementById(id);
+    let streamTimer = null;
+
+    function setPill(el, info) {
+      el.textContent = info.text;
+      el.className = "pop-pill" + (info.tone === "danger" ? " is-danger" : info.tone === "warn" ? " is-warn" : "");
+    }
+
+    function setBanner(el, info) {
+      if (info) {
+        el.textContent = info.text;
+        el.className = `pop-banner is-visible is-${info.tone}`;
+      } else {
+        el.className = "pop-banner";
+        el.textContent = "";
+      }
+    }
+
+    function renderBars(container, values, mode) {
+      container.innerHTML = values
+        .map((v, idx) => {
+          let cls = "bar-col";
+          const isLast = idx === values.length - 1;
+          if (mode === "cache") {
+            cls += v < 50 ? " is-danger" : v < 80 ? " is-warn" : " is-ok";
+          } else if (mode === "ctx") {
+            cls += v >= 85 ? " is-warn" : isLast ? " is-latest" : "";
+          } else if (isLast) {
+            cls += " is-latest";
+          }
+          return `<span class="${cls}" style="height:${Math.max(12, Math.min(100, v))}%"></span>`;
+        })
+        .join("");
+    }
+
+    function renderScenario(key) {
+      const d = SCENARIOS[key];
+      document.body.dataset.scenario = key;
+
+      document.querySelectorAll("[data-set-scenario]").forEach((btn) => {
+        btn.setAttribute("aria-pressed", String(btn.dataset.setScenario === key));
+      });
+
+      // Inline 4 buttons
+      $("hud-tps").textContent = d.tps.toFixed(1);
+      $("btn-spark-path").setAttribute("d", d.spark);
+
+      $("hud-ctx-pct").textContent = `${Math.round(d.ctxPct)}%`;
+      $("hud-ctx-bar").style.width = `${d.ctxPct}%`;
+      $("hud-ctx-bar").className = "mini-bar-fill" + (d.ctxPct >= 80 ? " is-warn" : "");
+
+      const caBtnVal = $("hud-cache-pct");
+      caBtnVal.textContent = `${Math.round(d.cachePct)}%`;
+      caBtnVal.className = "hud-val mono " + (d.cachePct < 50 ? "is-danger" : d.cachePct < 80 ? "is-warn" : "is-ok");
+
+      $("hud-tokens").textContent = d.totalTok;
+
+      // Sync native right-side ring
+      const circ = 40.84;
+      $("native-ring-arc").setAttribute("stroke-dashoffset", (circ * (1 - d.ctxPct / 100)).toFixed(2));
+
+      // Popover 1: Speed
+      setPill($("sp-pill"), d.speedPill);
+      $("sp-tps").textContent = d.tps.toFixed(1);
+      $("sp-ttft").textContent = d.ttft;
+      $("sp-range").textContent = d.speedRange;
+      $("sp-split-text").innerHTML = `<strong>${d.llmSec}</strong> / ${d.toolSec}`;
+      $("sp-llm-bar").style.width = `${d.llmPct}%`;
+      $("sp-tool-bar").style.width = `${100 - d.llmPct}%`;
+      $("sp-note").textContent = d.speedNote;
+      renderBars($("sp-bars"), d.speedBars, "speed");
+
+      // Popover 2: Context
+      setPill($("ctx-pill"), d.ctxPill);
+      setBanner($("ctx-banner"), d.ctxBanner);
+      $("ctx-pct").textContent = `${d.ctxPct.toFixed(1)}%`;
+      $("ctx-used").textContent = d.ctxUsed;
+      $("ctx-delta").textContent = d.ctxDelta;
+      $("ctx-remain").textContent = d.ctxRemain;
+      $("ctx-compact-tag").textContent = d.ctxCompact;
+      $("ctx-bar").style.width = `${d.ctxPct}%`;
+      $("ctx-bar").className = "seg-primary" + (d.ctxPct >= 80 ? " is-warn" : "");
+      renderBars($("ctx-bars"), d.ctxBars, "ctx");
+
+      // Popover 3: Cache
+      setPill($("ca-pill"), d.cachePill);
+      setBanner($("ca-banner"), d.cacheBanner);
+      $("ca-pct").textContent = `${d.cachePct.toFixed(1)}%`;
+      $("ca-write").textContent = d.cacheWrite;
+      $("ca-latest-step").textContent = d.cacheLatest;
+      $("ca-cached").textContent = d.cacheCached;
+      $("ca-uncached").textContent = d.cacheUncached;
+      $("ca-hit-bar").style.width = `${d.cachePct}%`;
+      $("ca-miss-bar").style.width = `${(100 - d.cachePct).toFixed(1)}%`;
+      renderBars($("ca-bars"), d.cacheBars, "cache");
+
+      // Popover 4: Tokens
+      $("tk-total").textContent = d.totalTok;
+      $("tk-input").textContent = d.inputTok;
+      $("tk-output").textContent = d.outTok;
+      $("tk-reas").textContent = d.reasTok;
+      $("tk-vis").textContent = d.visTok;
+      $("tk-reas-pct").textContent = `推理占 ${d.reasPct}%`;
+      $("tk-reas-bar").style.width = `${d.reasPct}%`;
+      $("tk-vis-bar").style.width = `${100 - d.reasPct}%`;
+
+      // Live streaming jitter
+      clearInterval(streamTimer);
+      if (key === "streaming") {
+        let curTps = d.tps;
+        let tokVal = 142.8;
+        streamTimer = setInterval(() => {
+          curTps = Math.max(41.2, Math.min(54.8, curTps + (Math.random() - 0.48) * 2.4));
+          tokVal += 0.1;
+          $("hud-tps").textContent = curTps.toFixed(1);
+          $("sp-tps").textContent = curTps.toFixed(1);
+          $("hud-tokens").textContent = `${tokVal.toFixed(1)}k`;
+          $("tk-total").textContent = `${tokVal.toFixed(1)}k`;
+        }, 1200);
+      }
+    }
+
+    // Bind active visual state & clean focus return across all 4 independent popovers
+    const pairs = [
+      ["btn-speed", "pop-speed"],
+      ["btn-ctx", "pop-ctx"],
+      ["btn-cache", "pop-cache"],
+      ["btn-tokens", "pop-tokens"]
+    ];
+
+    for (const [btnId, popId] of pairs) {
+      const btn = $(btnId);
+      const pop = $(popId);
+      pop.addEventListener("toggle", (e) => {
+        const isOpen = e.newState === "open";
+        btn.setAttribute("aria-expanded", String(isOpen));
+        btn.dataset.open = String(isOpen);
+
+        // Return focus only when dismissed via ESC or internal close button,
+        // without stealing focus if the user directly clicked another HUD button.
+        if (!isOpen && (pop.contains(document.activeElement) || document.activeElement === document.body)) {
+          btn.focus({ preventScroll: true });
+        }
+      });
+    }
+
+    // Style tabs
+    document.querySelectorAll("[data-set-style]").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        document.body.dataset.style = btn.dataset.setStyle;
+        document.querySelectorAll("[data-set-style]").forEach((b) => {
+          b.setAttribute("aria-pressed", String(b === btn));
+        });
+      });
+    });
+
+    // Scenario chips
+    document.querySelectorAll("[data-set-scenario]").forEach((btn) => {
+      btn.addEventListener("click", () => renderScenario(btn.dataset.setScenario));
+    });
+
+    // Tweaks panel
+    const tweaksBtn = $("tweaks-toggle");
+    const tweaksPanel = $("tweaks-panel");
+    const setTweaksOpen = (open) => {
+      tweaksPanel.hidden = !open;
+      tweaksBtn.setAttribute("aria-expanded", String(open));
+    };
+    tweaksBtn.addEventListener("click", () => setTweaksOpen(tweaksPanel.hidden));
+    $("tweaks-close").addEventListener("click", () => setTweaksOpen(false));
+
+    $("toggle-guide").addEventListener("change", (e) => {
+      document.body.dataset.guide = e.target.checked ? "on" : "off";
+    });
+
+    // Three-state theme control
+    const metaScheme = document.querySelector('meta[name="color-scheme"]');
+    const themeLabelMap = { system: "跟随系统", light: "浅色", dark: "深色" };
+    function applyTheme(mode) {
+      metaScheme.content = mode === "system" ? "light dark" : mode;
+      $("theme-status").textContent = themeLabelMap[mode] || "跟随系统";
+      document.querySelectorAll("[data-set-theme]").forEach((b) => {
+        b.setAttribute("aria-pressed", String(b.dataset.setTheme === mode));
+      });
+      try {
+        if (mode === "system") {
+          localStorage.removeItem("codex-hud-color-scheme");
+        } else {
+          localStorage.setItem("codex-hud-color-scheme", mode);
+        }
+      } catch {}
+    }
+
+    document.querySelectorAll("[data-set-theme]").forEach((btn) => {
+      btn.addEventListener("click", () => applyTheme(btn.dataset.setTheme));
+    });
+
+    window.addEventListener("storage", (e) => {
+      if (e.key === "codex-hud-color-scheme") {
+        applyTheme(e.newValue === "light" || e.newValue === "dark" ? e.newValue : "system");
+      }
+    });
+
+    const initialScheme = metaScheme.content === "light" || metaScheme.content === "dark"
+      ? metaScheme.content
+      : "system";
+    applyTheme(initialScheme);
+    renderScenario("streaming");
+  </script>
+</body>
+</html>

@@ -1,0 +1,27 @@
+{
+  "name": "codex-dashboard",
+  "version": "0.1.0",
+  "description": "Non-invasive transparent HUD overlay and local CDP widget for Codex Desktop App showing model speed, context window, cache hit rate, token usage, and safe GitHub self-update.",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/www12354jkl/Codex-Dashboard.git"
+  },
+  "private": true,
+  "type": "module",
+  "main": "dist/overlay/main.mjs",
+  "scripts": {
+    "build": "node scripts/build.mjs",
+    "typecheck": "tsc --noEmit",
+    "test": "node scripts/build.mjs --tests && node --test dist/tests/*.test.mjs",
+    "start": "node scripts/build.mjs && electron .",
+    "dev": "node scripts/build.mjs && electron . --dev",
+    "start:cdp": "node scripts/build.mjs && node dist/cdp/launcher.mjs",
+    "smoke:collector": "node scripts/build.mjs && node scripts/smoke-collector.mjs"
+  },
+  "devDependencies": {
+    "@types/node": "^22.15.0",
+    "electron": "^35.2.0",
+    "esbuild": "^0.25.4",
+    "typescript": "^5.8.3"
+  }
+}

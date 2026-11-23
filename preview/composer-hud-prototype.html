@@ -1,0 +1,1899 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="color-scheme" content="light dark" />
+  <script>
+    try {
+      const saved = localStorage.getItem("codex-hud-color-scheme");
+      document.querySelector('meta[name="color-scheme"]').content =
+        saved === "light" || saved === "dark" ? saved : "light dark";
+    } catch {}
+  </script>
+  <title>Codex App 指标插件 · Composer HUD 样式原型</title>
+  <style>
+    :root {
+      color-scheme: light dark;
+
+      &:has(> head > meta[name="color-scheme"][content="dark"]) {
+        color-scheme: dark;
+      }
+      &:has(> head > meta[name="color-scheme"][content="light"]) {
+        color-scheme: light;
+      }
+
+      /* Codex Desktop faithful surfaces & ink */
+      --bg-app: light-dark(#f8f8f8, #121214);
+      --bg-sidebar: light-dark(#f3f3f3, #17171a);
+      --bg-canvas: light-dark(#ffffff, #161618);
+      --bg-composer: light-dark(#ffffff, #1e1e22);
+      --bg-elevated: light-dark(#ffffff, #222227);
+      --bg-subtle: light-dark(#f5f5f5, #27272c);
+      --bg-pill: light-dark(rgba(0, 0, 0, 0.032), rgba(255, 255, 255, 0.055));
+      --bg-pill-hover: light-dark(rgba(0, 0, 0, 0.058), rgba(255, 255, 255, 0.095));
+
+      --border-hairline: light-dark(rgba(0, 0, 0, 0.085), rgba(255, 255, 255, 0.095));
+      --border-strong: light-dark(rgba(0, 0, 0, 0.14), rgba(255, 255, 255, 0.16));
+      --border-subtle: light-dark(rgba(0, 0, 0, 0.055), rgba(255, 255, 255, 0.065));
+
+      --ink-primary: light-dark(#161616, #ededf0);
+      --ink-secondary: light-dark(#5c5c62, #a2a2ab);
+      --ink-muted: light-dark(#9a9aa2, #6f6f78);
+      --ink-placeholder: light-dark(#a8a8af, #64646d);
+
+      /* Brand & semantic tokens */
+      --codex-full-access: light-dark(#9c4916, #e28b54);
+      --codex-voice-bg: light-dark(#141414, #f0f0f2);
+      --codex-voice-fg: light-dark(#ffffff, #141414);
+
+      --sem-ok: light-dark(#147a4c, #49c98c);
+      --sem-ok-soft: light-dark(rgba(20, 122, 76, 0.10), rgba(73, 201, 140, 0.14));
+      --sem-warn: light-dark(#b5620b, #eba246);
+      --sem-warn-soft: light-dark(rgba(181, 98, 11, 0.11), rgba(235, 162, 70, 0.15));
+      --sem-danger: light-dark(#c2312a, #f06d66);
+      --sem-danger-soft: light-dark(rgba(194, 49, 42, 0.10), rgba(240, 109, 102, 0.15));
+      --sem-info: light-dark(#2a63b8, #73a6f5);
+      --sem-info-soft: light-dark(rgba(42, 99, 184, 0.10), rgba(115, 166, 245, 0.14));
+      --sem-reasoning: light-dark(#6c4eb6, #a98df0);
+
+      --shadow-composer: light-dark(
+        0 6px 24px rgba(0, 0, 0, 0.04),
+        0 8px 28px rgba(0, 0, 0, 0.35)
+      );
+      --shadow-popover: light-dark(
+        0 18px 46px rgba(0, 0, 0, 0.11),
+        0 20px 56px rgba(0, 0, 0, 0.55)
+      );
+      --shadow-tweaks: light-dark(
+        0 10px 30px rgba(0, 0, 0, 0.08),
+        0 12px 34px rgba(0, 0, 0, 0.48)
+      );
+
+      --font-sans: "Segoe UI Variable Text", "PingFang SC", "Microsoft YaHei UI", "Hiragino Sans GB", sans-serif;
+      --font-mono: "Cascadia Mono", "JetBrains Mono", "SFMono-Regular", Consolas, monospace;
+
+      --radius-composer: 26px;
+      --radius-popover: 16px;
+      --ease-out-expo: cubic-bezier(0.16, 1, 0.3, 1);
+    }
+
+    *, *::before, *::after {
+      box-sizing: border-box;
+    }
+
+    html, body {
+      margin: 0;
+      padding: 0;
+      height: 100%;
+      font-family: var(--font-sans);
+      background: var(--bg-app);
+      color: var(--ink-primary);
+      -webkit-font-smoothing: antialiased;
+      text-rendering: optimizeLegibility;
+    }
+
+    .mono {
+      font-family: var(--font-mono);
+      font-variant-numeric: tabular-nums;
+    }
+
+    /* Full-bleed simulated Codex Desktop Window */
+    .app-shell {
+      display: grid;
+      grid-template-columns: 236px minmax(0, 1fr);
+      min-height: 100dvh;
+      background: var(--bg-canvas);
+    }
+
+    @media (max-width: 920px) {
+      .app-shell {
+        grid-template-columns: minmax(0, 1fr);
+      }
+      .sidebar {
+        display: none;
+      }
+    }
+
+    /* Subtle simulated Codex Desktop Sidebar */
+    .sidebar {
+      background: var(--bg-sidebar);
+      border-right: 1px solid var(--border-subtle);
+      padding: 14px 12px;
+      display: flex;
+      flex-direction: column;
+      gap: 14px;
+      user-select: none;
+    }
+
+    .win-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 4px 6px;
+    }
+
+    .brand-mark {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 13px;
+      font-weight: 600;
+      letter-spacing: -0.01em;
+      color: var(--ink-primary);
+    }
+
+    .brand-dot {
+      width: 18px;
+      height: 18px;
+      border-radius: 5px;
+      border: 1.5px solid var(--ink-primary);
+      display: grid;
+      place-items: center;
+      font-size: 10px;
+      font-weight: 700;
+    }
+
+    .sidebar-section-label {
+      font-size: 11px;
+      font-weight: 500;
+      color: var(--ink-muted);
+      padding: 0 8px;
+      margin-top: 4px;
+    }
+
+    .thread-list {
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+    }
+
+    .thread-item {
+      padding: 8px 10px;
+      border-radius: 9px;
+      font-size: 12.5px;
+      color: var(--ink-secondary);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      cursor: default;
+    }
+
+    .thread-item.is-active {
+      background: var(--bg-pill-hover);
+      color: var(--ink-primary);
+      font-weight: 500;
+    }
+
+    .thread-meta {
+      font-size: 11px;
+      color: var(--ink-muted);
+      flex-shrink: 0;
+    }
+
+    .sidebar-footer {
+      margin-top: auto;
+      padding: 10px 8px 4px;
+      border-top: 1px solid var(--border-subtle);
+      font-size: 11.5px;
+      color: var(--ink-muted);
+      line-height: 1.5;
+    }
+
+    /* Main Workspace Pane */
+    .workspace {
+      display: flex;
+      flex-direction: column;
+      min-height: 100dvh;
+      background: var(--bg-canvas);
+      position: relative;
+    }
+
+    .workspace-topbar {
+      height: 50px;
+      padding: 0 22px;
+      border-bottom: 1px solid var(--border-subtle);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+    }
+
+    .topbar-left {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      min-width: 0;
+    }
+
+    .topbar-title {
+      font-size: 13.5px;
+      font-weight: 600;
+      color: var(--ink-primary);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .topbar-badge {
+      font-size: 11.5px;
+      color: var(--ink-secondary);
+      background: var(--bg-subtle);
+      border: 1px solid var(--border-subtle);
+      border-radius: 6px;
+      padding: 2px 7px;
+      white-space: nowrap;
+    }
+
+    .style-quickbar {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      background: var(--bg-subtle);
+      padding: 3px;
+      border-radius: 10px;
+      border: 1px solid var(--border-subtle);
+    }
+
+    .style-tab {
+      appearance: none;
+      border: none;
+      background: transparent;
+      color: var(--ink-secondary);
+      font-family: inherit;
+      font-size: 12px;
+      font-weight: 500;
+      padding: 5px 10px;
+      border-radius: 7px;
+      cursor: pointer;
+      transition: background 140ms ease, color 140ms ease, box-shadow 140ms ease;
+      white-space: nowrap;
+    }
+
+    .style-tab:hover {
+      color: var(--ink-primary);
+    }
+
+    .style-tab[aria-pressed="true"] {
+      background: var(--bg-elevated);
+      color: var(--ink-primary);
+      box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
+    }
+
+    /* Simulated Conversation Stream */
+    .chat-stage {
+      flex: 1;
+      width: 100%;
+      max-width: 820px;
+      margin: 0 auto;
+      padding: 28px 24px 18px;
+      display: flex;
+      flex-direction: column;
+      gap: 20px;
+    }
+
+    .msg-user {
+      align-self: flex-end;
+      max-width: 72%;
+      background: var(--bg-subtle);
+      border: 1px solid var(--border-subtle);
+      padding: 10px 15px;
+      border-radius: 16px 16px 4px 16px;
+      font-size: 14px;
+      line-height: 1.55;
+      color: var(--ink-primary);
+      text-wrap: pretty;
+    }
+
+    .msg-assistant {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      max-width: 92%;
+    }
+
+    .msg-step-row {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 12px;
+      color: var(--ink-muted);
+    }
+
+    .msg-step-pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      padding: 2px 8px;
+      border-radius: 999px;
+      background: var(--bg-subtle);
+      border: 1px solid var(--border-subtle);
+      color: var(--ink-secondary);
+      font-size: 11.5px;
+    }
+
+    .msg-body {
+      font-size: 14px;
+      line-height: 1.65;
+      color: var(--ink-primary);
+      text-wrap: pretty;
+    }
+
+    .msg-body code {
+      font-family: var(--font-mono);
+      font-size: 12.5px;
+      background: var(--bg-subtle);
+      padding: 1px 5px;
+      border-radius: 5px;
+      border: 1px solid var(--border-subtle);
+    }
+
+    .streaming-caret {
+      display: inline-block;
+      width: 7px;
+      height: 14px;
+      border-radius: 2px;
+      background: var(--ink-primary);
+      vertical-align: -2px;
+      margin-left: 3px;
+      opacity: 0;
+    }
+
+    body[data-scenario="streaming"] .streaming-caret {
+      opacity: 1;
+      animation: caret-blink 900ms steps(2) infinite;
+    }
+
+    @keyframes caret-blink {
+      0%, 100% { opacity: 0.9; }
+      50% { opacity: 0.15; }
+    }
+
+    /* Callout hint explaining the prototype */
+    .stage-note {
+      margin-top: auto;
+      padding: 10px 14px;
+      border-radius: 12px;
+      background: var(--bg-subtle);
+      border: 1px dashed var(--border-strong);
+      font-size: 12.5px;
+      color: var(--ink-secondary);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      flex-wrap: wrap;
+    }
+
+    .stage-note strong {
+      color: var(--ink-primary);
+      font-weight: 600;
+    }
+
+    .scenario-pills {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      flex-wrap: wrap;
+    }
+
+    .scenario-chip {
+      appearance: none;
+      border: 1px solid var(--border-hairline);
+      background: var(--bg-elevated);
+      color: var(--ink-secondary);
+      font-family: inherit;
+      font-size: 11.5px;
+      padding: 4px 9px;
+      border-radius: 999px;
+      cursor: pointer;
+      transition: all 140ms ease;
+    }
+
+    .scenario-chip:hover {
+      border-color: var(--border-strong);
+      color: var(--ink-primary);
+    }
+
+    .scenario-chip[aria-pressed="true"] {
+      background: var(--ink-primary);
+      color: var(--bg-canvas);
+      border-color: transparent;
+    }
+
+    /* ============================================================
+       CODEX DESKTOP COMPOSER (PIXEL-FAITHFUL TO USER SCREENSHOT)
+       ============================================================ */
+    .composer-dock {
+      width: 100%;
+      max-width: 820px;
+      margin: 0 auto;
+      padding: 6px 24px 28px;
+    }
+
+    .composer-card {
+      background: var(--bg-composer);
+      border: 1px solid var(--border-hairline);
+      border-radius: var(--radius-composer);
+      box-shadow: var(--shadow-composer);
+      padding: 16px 16px 12px 20px;
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+      transition: border-color 180ms ease, box-shadow 180ms ease;
+    }
+
+    .composer-card:focus-within {
+      border-color: var(--border-strong);
+    }
+
+    .composer-input {
+      width: 100%;
+      border: none;
+      outline: none;
+      resize: none;
+      background: transparent;
+      color: var(--ink-primary);
+      font-family: var(--font-sans);
+      font-size: 15.5px;
+      line-height: 1.45;
+      min-height: 26px;
+      max-height: 120px;
+      padding: 0;
+    }
+
+    .composer-input::placeholder {
+      color: var(--ink-placeholder);
+    }
+
+    /* The bottom toolbar row matching the user's screenshot */
+    .composer-footer {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      min-height: 36px;
+    }
+
+    .footer-left {
+      display: inline-flex;
+      align-items: center;
+      gap: 10px;
+      flex-shrink: 0;
+    }
+
+    .icon-btn {
+      appearance: none;
+      border: none;
+      background: transparent;
+      color: var(--ink-primary);
+      width: 28px;
+      height: 28px;
+      border-radius: 8px;
+      display: inline-grid;
+      place-items: center;
+      cursor: pointer;
+      padding: 0;
+      transition: background 140ms ease;
+    }
+
+    .icon-btn:hover {
+      background: var(--bg-pill);
+    }
+
+    .access-label {
+      font-size: 13.5px;
+      font-weight: 500;
+      color: var(--codex-full-access);
+      letter-spacing: -0.01em;
+      user-select: none;
+      white-space: nowrap;
+    }
+
+    /* THE EXACT RED-BOX SLOT IN THE MIDDLE OF THE COMPOSER FOOTER */
+    .hud-slot-wrapper {
+      flex: 1;
+      min-width: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 2px 4px;
+      border-radius: 10px;
+      position: relative;
+      transition: outline-color 180ms ease;
+    }
+
+    /* Optional toggleable red box guide matching the user's screenshot */
+    body[data-guide="on"] .hud-slot-wrapper {
+      outline: 2px solid #f04438;
+      outline-offset: 2px;
+    }
+
+    body[data-guide="on"] .hud-slot-wrapper::after {
+      content: "目标贴合区";
+      position: absolute;
+      top: -19px;
+      left: 6px;
+      font-size: 10px;
+      font-weight: 600;
+      color: #f04438;
+      background: var(--bg-composer);
+      padding: 0 5px;
+      border-radius: 4px;
+      pointer-events: none;
+    }
+
+    .footer-right {
+      display: inline-flex;
+      align-items: center;
+      gap: 11px;
+      flex-shrink: 0;
+    }
+
+    .native-ctx-ring {
+      width: 17px;
+      height: 17px;
+      display: inline-grid;
+      place-items: center;
+      color: var(--ink-muted);
+      flex-shrink: 0;
+    }
+
+    .model-chip {
+      display: inline-flex;
+      align-items: baseline;
+      gap: 5px;
+      font-size: 13.5px;
+      font-weight: 500;
+      color: var(--ink-primary);
+      white-space: nowrap;
+      user-select: none;
+    }
+
+    .model-effort {
+      color: var(--ink-muted);
+      font-weight: 400;
+    }
+
+    .voice-btn {
+      appearance: none;
+      border: none;
+      width: 34px;
+      height: 34px;
+      border-radius: 999px;
+      background: var(--codex-voice-bg);
+      color: var(--codex-voice-fg);
+      display: inline-grid;
+      place-items: center;
+      cursor: pointer;
+      transition: transform 140ms var(--ease-out-expo), opacity 140ms ease;
+    }
+
+    .voice-btn:hover {
+      opacity: 0.9;
+    }
+
+    .voice-btn:active {
+      transform: scale(0.95);
+    }
+
+    /* ============================================================
+       THE TELEMETRY HUD TRIGGER BUTTON (4 SWITCHABLE STYLES)
+       ============================================================ */
+    .hud-trigger {
+      anchor-name: --hud-trigger;
+      appearance: none;
+      border: 1px solid transparent;
+      background: transparent;
+      color: var(--ink-secondary);
+      font-family: var(--font-sans);
+      font-size: 12px;
+      line-height: 1;
+      height: 30px;
+      max-width: 100%;
+      padding: 0 10px;
+      border-radius: 999px;
+      display: inline-flex;
+      align-items: center;
+      gap: 10px;
+      cursor: pointer;
+      overflow: hidden;
+      white-space: nowrap;
+      transition:
+        background 160ms ease,
+        border-color 160ms ease,
+        color 160ms ease,
+        box-shadow 160ms ease,
+        transform 140ms var(--ease-out-expo);
+    }
+
+    .hud-trigger:focus-visible {
+      outline: 2px solid var(--sem-info);
+      outline-offset: 2px;
+    }
+
+    .hud-trigger:active {
+      transform: scale(0.985);
+    }
+
+    /* Live pulse dot */
+    .live-dot {
+      width: 6px;
+      height: 6px;
+      border-radius: 999px;
+      background: var(--sem-ok);
+      flex-shrink: 0;
+      position: relative;
+    }
+
+    body[data-scenario="streaming"] .live-dot::after {
+      content: "";
+      position: absolute;
+      inset: -3px;
+      border-radius: 999px;
+      border: 1.5px solid var(--sem-ok);
+      animation: pulse-ring 1.3s ease-out infinite;
+    }
+
+    body[data-scenario="cache-drop"] .live-dot {
+      background: var(--sem-danger);
+    }
+
+    body[data-scenario="high-ctx"] .live-dot {
+      background: var(--sem-warn);
+    }
+
+    @keyframes pulse-ring {
+      0% { transform: scale(0.8); opacity: 0.85; }
+      100% { transform: scale(2.1); opacity: 0; }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      body[data-scenario="streaming"] .live-dot::after,
+      body[data-scenario="streaming"] .streaming-caret {
+        animation: none;
+      }
+    }
+
+    .hud-metric {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      min-width: 0;
+    }
+
+    .hud-label {
+      color: var(--ink-muted);
+      font-size: 11px;
+      font-weight: 400;
+    }
+
+    .hud-val {
+      color: var(--ink-primary);
+      font-weight: 500;
+      letter-spacing: -0.02em;
+    }
+
+    .hud-val.is-ok { color: var(--sem-ok); }
+    .hud-val.is-warn { color: var(--sem-warn); }
+    .hud-val.is-danger { color: var(--sem-danger); }
+
+    .hud-sep {
+      width: 1px;
+      height: 11px;
+      background: var(--border-hairline);
+      flex-shrink: 0;
+    }
+
+    /* Mini inline context bar */
+    .mini-bar {
+      width: 28px;
+      height: 4px;
+      border-radius: 999px;
+      background: var(--border-hairline);
+      overflow: hidden;
+      flex-shrink: 0;
+    }
+
+    .mini-bar-fill {
+      height: 100%;
+      border-radius: 999px;
+      background: var(--ink-primary);
+      transition: width 320ms var(--ease-out-expo), background-color 220ms ease;
+    }
+
+    .mini-bar-fill.is-warn { background: var(--sem-warn); }
+    .mini-bar-fill.is-danger { background: var(--sem-danger); }
+    .mini-bar-fill.is-ok { background: var(--sem-ok); }
+
+    /* Inline SVG sparkline (shown in Style C) */
+    .hud-sparkline {
+      display: none;
+      width: 34px;
+      height: 14px;
+      flex-shrink: 0;
+      overflow: visible;
+    }
+
+    /* Style A: Native Hairline (zero capsule chrome at rest) */
+    body[data-style="native"] .hud-trigger {
+      border-radius: 9px;
+      padding: 0 9px;
+      gap: 9px;
+    }
+    body[data-style="native"] .hud-trigger:hover {
+      background: var(--bg-pill);
+    }
+
+    /* Style B: Frosted Pill (ideal for standalone floating OS overlay) */
+    body[data-style="pill"] .hud-trigger {
+      background: var(--bg-pill);
+      border-color: var(--border-hairline);
+      padding: 0 12px;
+      gap: 9px;
+      box-shadow: 0 1px 2px rgba(0, 0, 0, 0.03);
+    }
+    body[data-style="pill"] .hud-trigger:hover {
+      background: var(--bg-pill-hover);
+      border-color: var(--border-strong);
+    }
+
+    /* Style C: Micro Gauge (developer instrument strip with sparkline + cache bar) */
+    body[data-style="gauge"] .hud-trigger {
+      background: var(--bg-subtle);
+      border-color: var(--border-hairline);
+      border-radius: 10px;
+      padding: 0 11px;
+      gap: 9px;
+      height: 31px;
+    }
+    body[data-style="gauge"] .hud-trigger:hover {
+      border-color: var(--border-strong);
+      background: var(--bg-pill-hover);
+    }
+    body[data-style="gauge"] .hud-sparkline {
+      display: inline-block;
+    }
+
+    /* Style D: Ultra-Quiet Focus (only speed + cache + tiny ctx bar) */
+    body[data-style="quiet"] .hud-trigger {
+      border-radius: 999px;
+      padding: 0 10px;
+      gap: 10px;
+    }
+    body[data-style="quiet"] .hud-trigger:hover {
+      background: var(--bg-pill);
+    }
+    body[data-style="quiet"] .hud-metric-tokens,
+    body[data-style="quiet"] .hud-sep-tokens,
+    body[data-style="quiet"] .hud-label-verbose {
+      display: none;
+    }
+
+    /* Hide low-priority metric cleanly if composer gets very narrow */
+    @media (max-width: 720px) {
+      .hud-metric-tokens,
+      .hud-sep-tokens {
+        display: none;
+      }
+    }
+
+    /* ============================================================
+       ANCHORED TELEMETRY POPOVER (NATIVE TOP-LAYER + @starting-style)
+       ============================================================ */
+    #telemetry-popover {
+      position-anchor: --hud-trigger;
+      width: min(468px, calc(100vw - 24px));
+      padding: 0;
+      border: 1px solid var(--border-hairline);
+      border-radius: var(--radius-popover);
+      background: var(--bg-elevated);
+      color: var(--ink-primary);
+      box-shadow: var(--shadow-popover);
+      overflow: hidden;
+
+      /* Base closed state for top-layer transition */
+      opacity: 0;
+      transition-property: opacity, transform, display, overlay;
+      transition-duration: 210ms;
+      transition-timing-function: var(--ease-out-expo);
+      transition-behavior: allow-discrete;
+
+      @media (prefers-reduced-motion: no-preference) {
+        transform: translateY(6px) scale(0.985);
+      }
+    }
+
+    /* Progressive enhancement for CSS Anchor Positioning */
+    @supports (position-area: block-start) {
+      #telemetry-popover {
+        inset: auto;
+        margin: 0;
+        margin-block-end: 12px;
+        position-area: block-start center;
+        position-try-fallbacks: flip-block, flip-inline, flip-block flip-inline;
+      }
+    }
+
+    #telemetry-popover:is(:popover-open, .\:popover-open) {
+      opacity: 1;
+
+      @starting-style {
+        opacity: 0;
+      }
+
+      @media (prefers-reduced-motion: no-preference) {
+        transform: translateY(0) scale(1);
+
+        @starting-style {
+          transform: translateY(6px) scale(0.985);
+        }
+      }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      #telemetry-popover {
+        transition-duration: 90ms;
+      }
+    }
+
+    .pop-header {
+      padding: 13px 16px 11px;
+      border-bottom: 1px solid var(--border-subtle);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+    }
+
+    .pop-title-group {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      min-width: 0;
+    }
+
+    .pop-title {
+      font-size: 13px;
+      font-weight: 600;
+      color: var(--ink-primary);
+    }
+
+    .pop-status-tag {
+      font-size: 11px;
+      font-weight: 500;
+      padding: 2px 7px;
+      border-radius: 999px;
+      background: var(--sem-ok-soft);
+      color: var(--sem-ok);
+      white-space: nowrap;
+    }
+
+    .pop-status-tag.is-warn {
+      background: var(--sem-warn-soft);
+      color: var(--sem-warn);
+    }
+
+    .pop-status-tag.is-danger {
+      background: var(--sem-danger-soft);
+      color: var(--sem-danger);
+    }
+
+    .pop-close {
+      appearance: none;
+      border: none;
+      background: transparent;
+      color: var(--ink-muted);
+      font-family: var(--font-mono);
+      font-size: 11px;
+      padding: 3px 6px;
+      border-radius: 6px;
+      cursor: pointer;
+    }
+
+    .pop-close:hover {
+      background: var(--bg-pill);
+      color: var(--ink-primary);
+    }
+
+    /* Optional alert banner for cache drop / compaction */
+    .pop-alert {
+      display: none;
+      padding: 8px 16px;
+      font-size: 12px;
+      line-height: 1.45;
+      border-bottom: 1px solid var(--border-subtle);
+    }
+
+    .pop-alert.is-visible {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+    }
+
+    .pop-alert.is-danger {
+      background: var(--sem-danger-soft);
+      color: var(--sem-danger);
+    }
+
+    .pop-alert.is-warn {
+      background: var(--sem-warn-soft);
+      color: var(--sem-warn);
+    }
+
+    /* 2x2 KPI Grid */
+    .kpi-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 1px;
+      background: var(--border-subtle);
+      border-bottom: 1px solid var(--border-subtle);
+    }
+
+    .kpi-card {
+      background: var(--bg-elevated);
+      padding: 13px 15px;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+
+    .kpi-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      font-size: 11.5px;
+      color: var(--ink-muted);
+    }
+
+    .kpi-main {
+      display: flex;
+      align-items: baseline;
+      gap: 6px;
+    }
+
+    .kpi-num {
+      font-size: 20px;
+      font-weight: 600;
+      letter-spacing: -0.03em;
+      color: var(--ink-primary);
+      line-height: 1.1;
+    }
+
+    .kpi-unit {
+      font-size: 11.5px;
+      color: var(--ink-muted);
+    }
+
+    .kpi-sub {
+      font-size: 11.5px;
+      color: var(--ink-secondary);
+      line-height: 1.4;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 6px;
+    }
+
+    .progress-track {
+      width: 100%;
+      height: 5px;
+      border-radius: 999px;
+      background: var(--bg-subtle);
+      overflow: hidden;
+      display: flex;
+      gap: 1px;
+    }
+
+    .seg-cached { background: var(--sem-ok); transition: width 320ms var(--ease-out-expo); }
+    .seg-uncached { background: var(--border-strong); transition: width 320ms var(--ease-out-expo); }
+    .seg-ctx { background: var(--ink-primary); transition: width 320ms var(--ease-out-expo), background 220ms ease; }
+    .seg-ctx.is-warn { background: var(--sem-warn); }
+    .seg-ctx.is-danger { background: var(--sem-danger); }
+    .seg-reasoning { background: var(--sem-reasoning); }
+    .seg-visible { background: var(--sem-info); }
+
+    /* Recent API Steps Waterfall */
+    .steps-section {
+      padding: 12px 16px;
+      border-bottom: 1px solid var(--border-subtle);
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+
+    .section-row-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      font-size: 11.5px;
+      color: var(--ink-muted);
+    }
+
+    .step-rows {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+
+    .step-row {
+      display: grid;
+      grid-template-columns: 44px 1fr 56px 52px;
+      align-items: center;
+      gap: 8px;
+      font-size: 11.5px;
+      color: var(--ink-secondary);
+    }
+
+    .step-bar-wrap {
+      height: 6px;
+      background: var(--bg-subtle);
+      border-radius: 999px;
+      overflow: hidden;
+      display: flex;
+    }
+
+    .bar-llm {
+      background: var(--ink-primary);
+      height: 100%;
+    }
+
+    .bar-tool {
+      background: var(--sem-warn);
+      opacity: 0.72;
+      height: 100%;
+    }
+
+    /* Rate limits footer (5h / 7d from token_count.rate_limits) */
+    .quota-footer {
+      padding: 10px 16px 12px;
+      background: var(--bg-subtle);
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 14px;
+    }
+
+    .quota-item {
+      display: flex;
+      flex-direction: column;
+      gap: 5px;
+    }
+
+    .quota-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      font-size: 11px;
+      color: var(--ink-secondary);
+    }
+
+    /* ============================================================
+       FLOATING TWEAKS PANEL (BOTTOM-RIGHT, COLLAPSIBLE)
+       ============================================================ */
+    .tweaks-wrap {
+      position: fixed;
+      right: 16px;
+      bottom: 16px;
+      z-index: 40;
+      display: flex;
+      flex-direction: column;
+      align-items: flex-end;
+      gap: 8px;
+    }
+
+    .tweaks-toggle {
+      appearance: none;
+      border: 1px solid var(--border-hairline);
+      background: var(--bg-elevated);
+      color: var(--ink-primary);
+      font-family: inherit;
+      font-size: 12px;
+      font-weight: 500;
+      padding: 7px 12px;
+      border-radius: 999px;
+      box-shadow: var(--shadow-tweaks);
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .tweaks-toggle:hover {
+      border-color: var(--border-strong);
+    }
+
+    .tweaks-panel {
+      width: 268px;
+      background: var(--bg-elevated);
+      border: 1px solid var(--border-hairline);
+      border-radius: 14px;
+      box-shadow: var(--shadow-tweaks);
+      padding: 13px 14px;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+
+    .tweaks-panel[hidden] {
+      display: none;
+    }
+
+    .tweaks-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      font-size: 12px;
+      font-weight: 600;
+      color: var(--ink-primary);
+    }
+
+    .tweak-group {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+
+    .tweak-label {
+      font-size: 11px;
+      color: var(--ink-muted);
+      display: flex;
+      justify-content: space-between;
+    }
+
+    .seg-control {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 3px;
+      background: var(--bg-subtle);
+      padding: 3px;
+      border-radius: 9px;
+      border: 1px solid var(--border-subtle);
+    }
+
+    .seg-control.cols-2 {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    .seg-btn {
+      appearance: none;
+      border: none;
+      background: transparent;
+      color: var(--ink-secondary);
+      font-family: inherit;
+      font-size: 11.5px;
+      padding: 5px 6px;
+      border-radius: 6px;
+      cursor: pointer;
+    }
+
+    .seg-btn[aria-pressed="true"] {
+      background: var(--bg-elevated);
+      color: var(--ink-primary);
+      font-weight: 500;
+      box-shadow: 0 1px 2px rgba(0, 0, 0, 0.08);
+    }
+
+    .tweak-switch-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      font-size: 12px;
+      color: var(--ink-secondary);
+      cursor: pointer;
+    }
+
+    .tweak-switch-row input {
+      accent-color: var(--ink-primary);
+      width: 15px;
+      height: 15px;
+      cursor: pointer;
+    }
+  </style>
+</head>
+<body data-style="native" data-scenario="streaming" data-guide="off">
+  <div class="app-shell">
+    <!-- Simulated Codex Desktop Sidebar -->
+    <aside class="sidebar" aria-label="会话列表（模拟）">
+      <div class="win-header">
+        <span class="brand-mark">
+          <span class="brand-dot">C</span>
+          Codex Desktop
+        </span>
+      </div>
+
+      <div class="sidebar-section-label">codex-dashboard</div>
+      <div class="thread-list">
+        <div class="thread-item is-active">
+          <span>Composer HUD 样式与采集</span>
+          <span class="thread-meta mono">94%</span>
+        </div>
+        <div class="thread-item">
+          <span>Rollout JSONL 增量解析</span>
+          <span class="thread-meta mono">89%</span>
+        </div>
+        <div class="thread-item">
+          <span>Windows Overlay 对齐测试</span>
+          <span class="thread-meta mono">76%</span>
+        </div>
+      </div>
+
+      <div class="sidebar-footer">
+        原型说明：当前为纯本地 HTML 交互预览，数值使用你本机 <code>gpt-6.2-sol</code> 真实字段口径模拟。
+      </div>
+    </aside>
+
+    <!-- Main Codex Workspace -->
+    <main class="workspace">
+      <header class="workspace-topbar">
+        <div class="topbar-left">
+          <span class="topbar-title">Composer HUD 样式原型预览</span>
+          <span class="topbar-badge mono">gpt-6.2-sol · high · 475k ctx</span>
+        </div>
+
+        <nav class="style-quickbar" aria-label="切换嵌入样式">
+          <button type="button" class="style-tab" data-set-style="native" aria-pressed="true">A 原生融入</button>
+          <button type="button" class="style-tab" data-set-style="pill" aria-pressed="false">B 磨砂胶囊</button>
+          <button type="button" class="style-tab" data-set-style="gauge" aria-pressed="false">C 精密仪表</button>
+          <button type="button" class="style-tab" data-set-style="quiet" aria-pressed="false">D 极简专注</button>
+        </nav>
+      </header>
+
+      <section class="chat-stage" aria-label="模拟对话上下文">
+        <div class="msg-user">
+          帮我看下当前会话的模型速度、上下文占比、Token 消耗和 Prompt 缓存命中率，顺便把贴在底部输入框中间的状态条做出来。
+        </div>
+
+        <div class="msg-assistant">
+          <div class="msg-step-row">
+            <span class="msg-step-pill mono">exec · 3.1s</span>
+            <span class="msg-step-pill mono">TTFT 1.18s</span>
+            <span class="msg-step-pill mono">Cache 94.2%</span>
+          </div>
+          <div class="msg-body">
+            已对接 <code>~/.codex/sessions/**/rollout-*.jsonl</code> 实时增量流。你可以直接看下方输入框底栏中间的状态条：
+            <strong>点击它</strong>会原地向上弹出详细 Telemetry 面板（含单步模型/工具耗时拆分、推理与可见输出分离口径、以及 5h/7d 配额条）。<span class="streaming-caret" aria-hidden="true"></span>
+          </div>
+        </div>
+
+        <div class="stage-note">
+          <span><strong>快速体验状态切换：</strong>切换右侧运行场景，观察下方红框位指标条的实时视觉反馈（点击指标条展开详情卡）。</span>
+          <div class="scenario-pills" role="group" aria-label="模拟运行场景">
+            <button type="button" class="scenario-chip" data-set-scenario="streaming" aria-pressed="true">实时生成中</button>
+            <button type="button" class="scenario-chip" data-set-scenario="idle" aria-pressed="false">空闲已就绪</button>
+            <button type="button" class="scenario-chip" data-set-scenario="cache-drop" aria-pressed="false">缓存骤降预警</button>
+            <button type="button" class="scenario-chip" data-set-scenario="high-ctx" aria-pressed="false">高上下文 / 压缩</button>
+          </div>
+        </div>
+      </section>
+
+      <!-- ========================================================
+           PIXEL-FAITHFUL CODEX DESKTOP COMPOSER BAR
+           ======================================================== -->
+      <section class="composer-dock" aria-label="Codex 输入框模拟">
+        <div class="composer-card">
+          <textarea
+            class="composer-input"
+            rows="1"
+            placeholder="和 Codex 一起工作"
+            aria-label="和 Codex 一起工作"
+          ></textarea>
+
+          <div class="composer-footer">
+            <!-- Left: + 完全访问 -->
+            <div class="footer-left">
+              <button type="button" class="icon-btn" aria-label="添加附件">
+                <svg width="17" height="17" viewBox="0 0 18 18" fill="none" aria-hidden="true">
+                  <path d="M9 3.5V14.5M3.5 9H14.5" stroke="currentColor" stroke-width="1.65" stroke-linecap="round"/>
+                </svg>
+              </button>
+              <span class="access-label">完全访问</span>
+            </div>
+
+            <!-- Middle Target Slot: THE USER'S RED-BOX POSITION -->
+            <div class="hud-slot-wrapper">
+              <button
+                type="button"
+                id="hud-trigger-btn"
+                class="hud-trigger"
+                commandfor="telemetry-popover"
+                command="toggle-popover"
+                aria-label="展开 Codex 模型速度、上下文、缓存命中率与 Token 详情"
+              >
+                <span class="live-dot" aria-hidden="true"></span>
+
+                <!-- Speed -->
+                <span class="hud-metric">
+                  <svg class="hud-sparkline" viewBox="0 0 34 14" fill="none" aria-hidden="true">
+                    <path id="spark-path" d="M1 10 L6 8 L11 9 L16 5 L21 6 L27 3 L33 4" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/>
+                  </svg>
+                  <span id="hud-tps" class="hud-val mono">48.6</span>
+                  <span class="hud-label mono">t/s</span>
+                </span>
+
+                <span class="hud-sep" aria-hidden="true"></span>
+
+                <!-- Context -->
+                <span class="hud-metric">
+                  <span class="hud-label hud-label-verbose">Ctx</span>
+                  <span class="mini-bar" aria-hidden="true">
+                    <span id="hud-ctx-bar" class="mini-bar-fill" style="width: 18%;"></span>
+                  </span>
+                  <span id="hud-ctx-pct" class="hud-val mono">18%</span>
+                </span>
+
+                <span class="hud-sep" aria-hidden="true"></span>
+
+                <!-- Cache Hit Rate -->
+                <span class="hud-metric">
+                  <span class="hud-label">Cache</span>
+                  <span id="hud-cache-pct" class="hud-val mono is-ok">94%</span>
+                </span>
+
+                <span class="hud-sep hud-sep-tokens" aria-hidden="true"></span>
+
+                <!-- Session Tokens -->
+                <span class="hud-metric hud-metric-tokens">
+                  <span id="hud-tokens" class="hud-val mono">142.8k</span>
+                  <span class="hud-label">tok</span>
+                </span>
+              </button>
+            </div>
+
+            <!-- Right: Context Ring + GPT-6.2 Sol 高 + Mic + Voice -->
+            <div class="footer-right">
+              <span class="native-ctx-ring" title="Codex 原生上下文圆环">
+                <svg width="16" height="16" viewBox="0 0 18 18" fill="none" aria-hidden="true">
+                  <circle cx="9" cy="9" r="6.5" stroke="currentColor" stroke-opacity="0.25" stroke-width="2"/>
+                  <circle id="native-ring-arc" cx="9" cy="9" r="6.5" stroke="currentColor" stroke-width="2"
+                    stroke-linecap="round" stroke-dasharray="40.84" stroke-dashoffset="33.5"
+                    transform="rotate(-90 9 9)"/>
+                </svg>
+              </span>
+
+              <span class="model-chip">
+                <span>GPT-6.2 Sol</span>
+                <span class="model-effort">高</span>
+              </span>
+
+              <button type="button" class="icon-btn" aria-label="语音输入">
+                <svg width="16" height="16" viewBox="0 0 18 18" fill="none" aria-hidden="true">
+                  <rect x="6.5" y="2.5" width="5" height="8" rx="2.5" stroke="currentColor" stroke-width="1.5"/>
+                  <path d="M4.2 8.8a4.8 4.8 0 0 0 9.6 0M9 13.6V16" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+                </svg>
+              </button>
+
+              <button type="button" class="voice-btn" aria-label="实时语音对话">
+                <svg width="15" height="15" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+                  <path d="M3 6.5V9.5M6 4.2V11.8M9 2.8V13.2M12 5.2V10.8" stroke="currentColor" stroke-width="1.75" stroke-linecap="round"/>
+                </svg>
+              </button>
+            </div>
+          </div>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <!-- ============================================================
+       ANCHORED TELEMETRY INSPECTOR POPOVER
+       ============================================================ -->
+  <div id="telemetry-popover" popover="auto" role="region" aria-label="Codex 实时指标详情">
+    <div class="pop-header">
+      <div class="pop-title-group">
+        <span class="pop-title">会话实时遥测</span>
+        <span id="pop-status-tag" class="pop-status-tag">生成中 · 单步吞吐</span>
+      </div>
+      <button type="button" class="pop-close" commandfor="telemetry-popover" command="hide-popover" aria-label="关闭详情">
+        ESC
+      </button>
+    </div>
+
+    <div id="pop-alert" class="pop-alert">
+      <span id="pop-alert-text"></span>
+      <span id="pop-alert-meta" class="mono"></span>
+    </div>
+
+    <div class="kpi-grid">
+      <!-- KPI 1: Speed -->
+      <div class="kpi-card">
+        <div class="kpi-head">
+          <span>模型速度</span>
+          <span id="kpi-ttft" class="mono">TTFT 1.18s</span>
+        </div>
+        <div class="kpi-main">
+          <span id="kpi-tps" class="kpi-num mono">48.6</span>
+          <span class="kpi-unit mono">tok/s</span>
+        </div>
+        <div class="kpi-sub">
+          <span id="kpi-speed-note">单步有效吞吐（不含工具）</span>
+          <span id="kpi-split" class="mono">模型 6.8s</span>
+        </div>
+      </div>
+
+      <!-- KPI 2: Context -->
+      <div class="kpi-card">
+        <div class="kpi-head">
+          <span>当前上下文快照</span>
+          <span id="kpi-ctx-pct" class="mono">18.0%</span>
+        </div>
+        <div class="kpi-main">
+          <span id="kpi-ctx-used" class="kpi-num mono">85.4k</span>
+          <span class="kpi-unit mono">/ 475k</span>
+        </div>
+        <div class="progress-track" aria-hidden="true">
+          <span id="pop-ctx-bar" class="seg-ctx" style="width: 18%;"></span>
+        </div>
+        <div class="kpi-sub">
+          <span id="kpi-ctx-note">距自动压缩余量充足</span>
+          <span id="kpi-ctx-delta" class="mono">+4.2k</span>
+        </div>
+      </div>
+
+      <!-- KPI 3: Cache Hit Rate -->
+      <div class="kpi-card">
+        <div class="kpi-head">
+          <span>缓存命中率（加权）</span>
+          <span id="kpi-cache-write" class="mono">写 0</span>
+        </div>
+        <div class="kpi-main">
+          <span id="kpi-cache-pct" class="kpi-num mono">94.2%</span>
+          <span id="kpi-cache-saved" class="kpi-unit">高命中</span>
+        </div>
+        <div class="progress-track" aria-hidden="true">
+          <span id="pop-cache-hit" class="seg-cached" style="width: 94.2%;"></span>
+          <span id="pop-cache-miss" class="seg-uncached" style="width: 5.8%;"></span>
+        </div>
+        <div class="kpi-sub">
+          <span>命中 <strong id="kpi-cached-tok" class="mono">130.1k</strong></span>
+          <span>未命中 <strong id="kpi-uncached-tok" class="mono">8.0k</strong></span>
+        </div>
+      </div>
+
+      <!-- KPI 4: Token Consumption -->
+      <div class="kpi-card">
+        <div class="kpi-head">
+          <span>会话累计 Token</span>
+          <span class="mono">含推理去重</span>
+        </div>
+        <div class="kpi-main">
+          <span id="kpi-total-tok" class="kpi-num mono">142.8k</span>
+          <span class="kpi-unit">tokens</span>
+        </div>
+        <div class="progress-track" aria-hidden="true">
+          <span id="pop-tok-reas" class="seg-reasoning" style="width: 40%;"></span>
+          <span id="pop-tok-vis" class="seg-visible" style="width: 60%;"></span>
+        </div>
+        <div class="kpi-sub">
+          <span>输出 <strong id="kpi-out-tok" class="mono">4.7k</strong></span>
+          <span>推理 <strong id="kpi-reas-tok" class="mono">1.9k</strong> · 可见 <strong id="kpi-vis-tok" class="mono">2.8k</strong></span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Step Waterfall -->
+    <div class="steps-section">
+      <div class="section-row-head">
+        <span>最近请求往返（模型耗时 vs 工具耗时）</span>
+        <span class="mono">黑=模型 · 橙=工具</span>
+      </div>
+      <div id="step-rows" class="step-rows"></div>
+    </div>
+
+    <!-- Quota Rate Limits -->
+    <div class="quota-footer">
+      <div class="quota-item">
+        <div class="quota-row">
+          <span>5h 额度窗口</span>
+          <span class="mono">10% · 2h18m 重置</span>
+        </div>
+        <div class="progress-track">
+          <span class="seg-ctx" style="width: 10%;"></span>
+        </div>
+      </div>
+      <div class="quota-item">
+        <div class="quota-row">
+          <span>7d 额度窗口</span>
+          <span class="mono">8% · 6d 重置</span>
+        </div>
+        <div class="progress-track">
+          <span class="seg-ctx" style="width: 8%;"></span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============================================================
+       FLOATING TWEAKS PANEL
+       ============================================================ -->
+  <div class="tweaks-wrap">
+    <div id="tweaks-panel" class="tweaks-panel" hidden>
+      <div class="tweaks-head">
+        <span>Tweaks</span>
+        <button type="button" id="tweaks-close" class="pop-close">收起</button>
+      </div>
+
+      <div class="tweak-group">
+        <div class="tweak-label"><span>外观主题</span><span id="theme-status" class="mono">跟随系统</span></div>
+        <div class="seg-control" role="group" aria-label="外观主题">
+          <button type="button" class="seg-btn" data-set-theme="system" aria-pressed="true">跟随系统</button>
+          <button type="button" class="seg-btn" data-set-theme="light" aria-pressed="false">浅色</button>
+          <button type="button" class="seg-btn" data-set-theme="dark" aria-pressed="false">深色</button>
+        </div>
+      </div>
+
+      <div class="tweak-group">
+        <div class="tweak-label"><span>定位参考线</span><span>同截图红框</span></div>
+        <label class="tweak-switch-row">
+          <span>显示红框贴合范围</span>
+          <input type="checkbox" id="toggle-guide" />
+        </label>
+      </div>
+    </div>
+
+    <button type="button" id="tweaks-toggle" class="tweaks-toggle" aria-expanded="false" aria-controls="tweaks-panel">
+      <svg width="14" height="14" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+        <path d="M2.5 4.5H13.5M2.5 8H13.5M2.5 11.5H13.5" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/>
+        <circle cx="5.5" cy="4.5" r="1.4" fill="currentColor"/>
+        <circle cx="10.5" cy="8" r="1.4" fill="currentColor"/>
+        <circle cx="7" cy="11.5" r="1.4" fill="currentColor"/>
+      </svg>
+      Tweaks
+    </button>
+  </div>
+
+  <!-- Conditional polyfills per modern-web-guidance (only loaded if native support missing) -->
+  <script type="module">
+    if (!Object.hasOwn(HTMLElement.prototype, "popover")) {
+      import("https://unpkg.com/@oddbird/popover-polyfill@latest/dist/popover.min.js");
+    }
+    if (!("commandForElement" in HTMLButtonElement.prototype)) {
+      import("https://esm.run/invokers-polyfill");
+    }
+  </script>
+
+  <script>
+    const SCENARIOS = {
+      streaming: {
+        tps: 48.6,
+        ttft: "1.18s",
+        speedNote: "单步有效吞吐（不含工具）",
+        split: "模型 6.8s · 工具 3.1s",
+        ctxPct: 18.0,
+        ctxUsed: "85.4k",
+        ctxDelta: "+4.2k",
+        ctxNote: "距自动压缩余量充足",
+        cachePct: 94.2,
+        cacheWrite: "写 0",
+        cacheBadge: "高命中",
+        cachedTok: "130.1k",
+        uncachedTok: "8.0k",
+        totalTok: "142.8k",
+        outTok: "4.7k",
+        reasTok: "1.9k",
+        visTok: "2.8k",
+        reasRatio: 40,
+        statusText: "生成中 · 实时流",
+        statusTone: "ok",
+        alert: null,
+        spark: "M1 10 L6 8 L11 9 L16 5 L21 6 L27 3 L33 4",
+        steps: [
+          { id: "#04", llmPct: 68, toolPct: 0, tps: "48.6 t/s", cache: "96%" },
+          { id: "#03", llmPct: 54, toolPct: 28, tps: "43.1 t/s", cache: "94%" },
+          { id: "#02", llmPct: 48, toolPct: 34, tps: "41.8 t/s", cache: "91%" }
+        ]
+      },
+      idle: {
+        tps: 44.2,
+        ttft: "0.92s",
+        speedNote: "上次完成回合均值",
+        split: "模型 5.2s · 工具 1.4s",
+        ctxPct: 14.5,
+        ctxUsed: "68.9k",
+        ctxDelta: "已稳定",
+        ctxNote: "最近快照（非会话累计）",
+        cachePct: 96.4,
+        cacheWrite: "写 0",
+        cacheBadge: "极佳",
+        cachedTok: "102.4k",
+        uncachedTok: "3.8k",
+        totalTok: "109.6k",
+        outTok: "3.4k",
+        reasTok: "1.2k",
+        visTok: "2.2k",
+        reasRatio: 35,
+        statusText: "空闲 · 最近回合",
+        statusTone: "ok",
+        alert: null,
+        spark: "M1 8 L6 7 L11 7 L16 6 L21 6 L27 5 L33 5",
+        steps: [
+          { id: "#03", llmPct: 62, toolPct: 16, tps: "44.2 t/s", cache: "97%" },
+          { id: "#02", llmPct: 55, toolPct: 22, tps: "42.0 t/s", cache: "95%" },
+          { id: "#01", llmPct: 42, toolPct: 0, tps: "39.4 t/s", cache: "51%" }
+        ]
+      },
+      "cache-drop": {
+        tps: 31.4,
+        ttft: "4.62s",
+        speedNote: "前缀失效导致首字变慢",
+        split: "模型 11.4s · 工具 2.0s",
+        ctxPct: 42.1,
+        ctxUsed: "200.1k",
+        ctxDelta: "+18.6k",
+        ctxNote: "前缀缓存重建中",
+        cachePct: 28.5,
+        cacheWrite: "写 143k",
+        cacheBadge: "骤降",
+        cachedTok: "57.0k",
+        uncachedTok: "143.1k",
+        totalTok: "388.4k",
+        outTok: "11.2k",
+        reasTok: "5.4k",
+        visTok: "5.8k",
+        reasRatio: 48,
+        statusText: "缓存命中骤降",
+        statusTone: "danger",
+        alert: {
+          tone: "danger",
+          text: "检测到 Prompt 缓存命中率由 93% 骤降至 28.5%（疑似工具列表或系统前缀变化）",
+          meta: "-64.5%"
+        },
+        spark: "M1 3 L6 4 L11 4 L16 5 L21 9 L27 11 L33 12",
+        steps: [
+          { id: "#09", llmPct: 82, toolPct: 14, tps: "31.4 t/s", cache: "29%" },
+          { id: "#08", llmPct: 46, toolPct: 25, tps: "47.8 t/s", cache: "93%" },
+          { id: "#07", llmPct: 41, toolPct: 18, tps: "49.1 t/s", cache: "94%" }
+        ]
+      },
+      "high-ctx": {
+        tps: 37.8,
+        ttft: "2.84s",
+        speedNote: "长上下文预填充耗时增加",
+        split: "模型 9.6s · 工具 4.3s",
+        ctxPct: 84.6,
+        ctxUsed: "401.8k",
+        ctxDelta: "曾压缩 -162k",
+        ctxNote: "接近窗口上限，建议新开线程或压缩",
+        cachePct: 88.1,
+        cacheWrite: "写 12k",
+        cacheBadge: "良好",
+        cachedTok: "354.0k",
+        uncachedTok: "47.8k",
+        totalTok: "1.42M",
+        outTok: "38.6k",
+        reasTok: "19.8k",
+        visTok: "18.8k",
+        reasRatio: 51,
+        statusText: "高上下文水位",
+        statusTone: "warn",
+        alert: {
+          tone: "warn",
+          text: "当前上下文已达 84.6%（401.8k / 475k），上次自动压缩释放了 162k tokens",
+          meta: "84.6%"
+        },
+        spark: "M1 5 L6 6 L11 6 L16 8 L21 8 L27 9 L33 9",
+        steps: [
+          { id: "#24", llmPct: 66, toolPct: 30, tps: "37.8 t/s", cache: "88%" },
+          { id: "#23", llmPct: 60, toolPct: 24, tps: "39.2 t/s", cache: "90%" },
+          { id: "#22", llmPct: 58, toolPct: 35, tps: "40.1 t/s", cache: "87%" }
+        ]
+      }
+    };
+
+    const $ = (id) => document.getElementById(id);
+    let currentScenario = "streaming";
+    let streamTimer = null;
+
+    function renderScenario(key) {
+      currentScenario = key;
+      const d = SCENARIOS[key];
+      document.body.dataset.scenario = key;
+
+      // Sync scenario buttons
+      document.querySelectorAll("[data-set-scenario]").forEach((btn) => {
+        btn.setAttribute("aria-pressed", String(btn.dataset.setScenario === key));
+      });
+
+      // HUD inline bar
+      $("hud-tps").textContent = d.tps.toFixed(1);
+      $("hud-ctx-pct").textContent = `${Math.round(d.ctxPct)}%`;
+      $("hud-ctx-bar").style.width = `${d.ctxPct}%`;
+      $("hud-ctx-bar").className =
+        "mini-bar-fill" + (d.ctxPct >= 80 ? " is-warn" : "");
+
+      const cacheEl = $("hud-cache-pct");
+      cacheEl.textContent = `${Math.round(d.cachePct)}%`;
+      cacheEl.className =
+        "hud-val mono " +
+        (d.cachePct < 50 ? "is-danger" : d.cachePct < 80 ? "is-warn" : "is-ok");
+
+      $("hud-tokens").textContent = d.totalTok;
+      $("spark-path").setAttribute("d", d.spark);
+
+      // Sync Codex native tiny ring on the right
+      const circ = 40.84;
+      $("native-ring-arc").setAttribute(
+        "stroke-dashoffset",
+        (circ * (1 - d.ctxPct / 100)).toFixed(2)
+      );
+
+      // Popover KPIs
+      const tag = $("pop-status-tag");
+      tag.textContent = d.statusText;
+      tag.className =
+        "pop-status-tag" +
+        (d.statusTone === "danger"
+          ? " is-danger"
+          : d.statusTone === "warn"
+            ? " is-warn"
+            : "");
+
+      const alertEl = $("pop-alert");
+      if (d.alert) {
+        alertEl.className = `pop-alert is-visible is-${d.alert.tone}`;
+        $("pop-alert-text").textContent = d.alert.text;
+        $("pop-alert-meta").textContent = d.alert.meta;
+      } else {
+        alertEl.className = "pop-alert";
+      }
+
+      $("kpi-tps").textContent = d.tps.toFixed(1);
+      $("kpi-ttft").textContent = `TTFT ${d.ttft}`;
+      $("kpi-speed-note").textContent = d.speedNote;
+      $("kpi-split").textContent = d.split;
+
+      $("kpi-ctx-pct").textContent = `${d.ctxPct.toFixed(1)}%`;
+      $("kpi-ctx-used").textContent = d.ctxUsed;
+      $("kpi-ctx-delta").textContent = d.ctxDelta;
+      $("kpi-ctx-note").textContent = d.ctxNote;
+      $("pop-ctx-bar").style.width = `${d.ctxPct}%`;
+      $("pop-ctx-bar").className =
+        "seg-ctx" + (d.ctxPct >= 80 ? " is-warn" : "");
+
+      $("kpi-cache-pct").textContent = `${d.cachePct.toFixed(1)}%`;
+      $("kpi-cache-write").textContent = d.cacheWrite;
+      $("kpi-cache-saved").textContent = d.cacheBadge;
+      $("kpi-cached-tok").textContent = d.cachedTok;
+      $("kpi-uncached-tok").textContent = d.uncachedTok;
+      $("pop-cache-hit").style.width = `${d.cachePct}%`;
+      $("pop-cache-miss").style.width = `${(100 - d.cachePct).toFixed(1)}%`;
+
+      $("kpi-total-tok").textContent = d.totalTok;
+      $("kpi-out-tok").textContent = d.outTok;
+      $("kpi-reas-tok").textContent = d.reasTok;
+      $("kpi-vis-tok").textContent = d.visTok;
+      $("pop-tok-reas").style.width = `${d.reasRatio}%`;
+      $("pop-tok-vis").style.width = `${100 - d.reasRatio}%`;
+
+      // Waterfall steps
+      $("step-rows").innerHTML = d.steps
+        .map(
+          (s) => `
+          <div class="step-row">
+            <span class="mono">${s.id}</span>
+            <div class="step-bar-wrap" aria-hidden="true">
+              <span class="bar-llm" style="width:${s.llmPct}%"></span>
+              <span class="bar-tool" style="width:${s.toolPct}%"></span>
+            </div>
+            <span class="mono" style="text-align:right">${s.tps}</span>
+            <span class="mono" style="text-align:right;color:${parseInt(s.cache) < 50 ? 'var(--sem-danger)' : 'var(--sem-ok)'}">${s.cache}</span>
+          </div>`
+        )
+        .join("");
+
+      // Subtle live jitter when in streaming scenario
+      clearInterval(streamTimer);
+      if (key === "streaming") {
+        let baseTps = d.tps;
+        let tokVal = 142.8;
+        streamTimer = setInterval(() => {
+          const next = Math.max(41.2, Math.min(54.8, baseTps + (Math.random() - 0.48) * 2.4));
+          baseTps = next;
+          tokVal += 0.1;
+          $("hud-tps").textContent = next.toFixed(1);
+          $("kpi-tps").textContent = next.toFixed(1);
+          $("hud-tokens").textContent = `${tokVal.toFixed(1)}k`;
+          $("kpi-total-tok").textContent = `${tokVal.toFixed(1)}k`;
+        }, 1200);
+      }
+    }
+
+    // Style tabs
+    document.querySelectorAll("[data-set-style]").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        const style = btn.dataset.setStyle;
+        document.body.dataset.style = style;
+        document.querySelectorAll("[data-set-style]").forEach((b) => {
+          b.setAttribute("aria-pressed", String(b === btn));
+        });
+      });
+    });
+
+    // Scenario chips
+    document.querySelectorAll("[data-set-scenario]").forEach((btn) => {
+      btn.addEventListener("click", () => renderScenario(btn.dataset.setScenario));
+    });
+
+    // Return focus cleanly when closing popover via internal ESC button
+    const popoverEl = $("telemetry-popover");
+    const triggerEl = $("hud-trigger-btn");
+    popoverEl.addEventListener("toggle", (e) => {
+      triggerEl.setAttribute("aria-expanded", String(e.newState === "open"));
+      if (e.newState === "closed") {
+        triggerEl.focus({ preventScroll: true });
+      }
+    });
+
+    // Tweaks panel toggle
+    const tweaksBtn = $("tweaks-toggle");
+    const tweaksPanel = $("tweaks-panel");
+    const setTweaksOpen = (open) => {
+      tweaksPanel.hidden = !open;
+      tweaksBtn.setAttribute("aria-expanded", String(open));
+    };
+    tweaksBtn.addEventListener("click", () => setTweaksOpen(tweaksPanel.hidden));
+    $("tweaks-close").addEventListener("click", () => setTweaksOpen(false));
+
+    // Red guide box toggle
+    $("toggle-guide").addEventListener("change", (e) => {
+      document.body.dataset.guide = e.target.checked ? "on" : "off";
+    });
+
+    // Three-state color-scheme control (system / light / dark) synced to <meta name="color-scheme">
+    const metaScheme = document.querySelector('meta[name="color-scheme"]');
+    const themeLabelMap = { system: "跟随系统", light: "浅色", dark: "深色" };
+    function applyTheme(mode) {
+      const content = mode === "system" ? "light dark" : mode;
+      metaScheme.content = content;
+      $("theme-status").textContent = themeLabelMap[mode] || "跟随系统";
+      document.querySelectorAll("[data-set-theme]").forEach((b) => {
+        b.setAttribute("aria-pressed", String(b.dataset.setTheme === mode));
+      });
+      try {
+        if (mode === "system") {
+          localStorage.removeItem("codex-hud-color-scheme");
+        } else {
+          localStorage.setItem("codex-hud-color-scheme", mode);
+        }
+      } catch {}
+    }
+
+    document.querySelectorAll("[data-set-theme]").forEach((btn) => {
+      btn.addEventListener("click", () => applyTheme(btn.dataset.setTheme));
+    });
+
+    window.addEventListener("storage", (e) => {
+      if (e.key === "codex-hud-color-scheme") {
+        applyTheme(e.newValue === "light" || e.newValue === "dark" ? e.newValue : "system");
+      }
+    });
+
+    // Initialize state
+    const initialScheme = metaScheme.content === "light" || metaScheme.content === "dark"
+      ? metaScheme.content
+      : "system";
+    applyTheme(initialScheme);
+    renderScenario("streaming");
+  </script>
+</body>
+</html>

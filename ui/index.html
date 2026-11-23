@@ -1,0 +1,432 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="color-scheme" content="light dark" />
+  <meta
+    http-equiv="Content-Security-Policy"
+    content="default-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline'; img-src 'self' data:;"
+  />
+  <script>
+    try {
+      const saved = localStorage.getItem("codex-hud-color-scheme");
+      document.querySelector('meta[name="color-scheme"]').content =
+        saved === "light" || saved === "dark" ? saved : "light dark";
+    } catch {}
+  </script>
+  <title>Codex Dashboard HUD</title>
+  <link rel="stylesheet" href="./styles.css" />
+</head>
+<body data-status="no_data">
+  <main class="overlay-stage" aria-label="Codex 透明指标悬浮条">
+    <div id="hud-group" class="hud-group" role="group" aria-label="Codex 实时指标与更新按钮组">
+      <!-- 1. Speed -->
+      <button
+        type="button"
+        id="btn-speed"
+        class="hud-btn"
+        popovertarget="pop-speed"
+        popovertargetaction="toggle"
+        aria-expanded="false"
+        aria-label="查看模型速度与 TTFT 详情"
+      >
+        <span id="live-dot" class="live-dot" aria-hidden="true"></span>
+        <span id="hud-tps" class="hud-val mono">--</span>
+        <span class="hud-label mono">t/s</span>
+      </button>
+
+      <span class="hud-sep" aria-hidden="true"></span>
+
+      <!-- 2. Context Window (Colored dynamic progress bar) -->
+      <button
+        type="button"
+        id="btn-ctx"
+        class="hud-btn"
+        popovertarget="pop-ctx"
+        popovertargetaction="toggle"
+        aria-expanded="false"
+        aria-label="查看当前上下文窗口占用详情"
+      >
+        <span class="hud-label">Ctx</span>
+        <span id="hud-ctx-track" class="mini-bar" aria-hidden="true">
+          <span id="hud-ctx-bar" class="mini-bar-fill" style="width: 0%;"></span>
+        </span>
+        <span id="hud-ctx-pct" class="hud-val mono is-ctx-ok">0%</span>
+      </button>
+
+      <span class="hud-sep" aria-hidden="true"></span>
+
+      <!-- 3. Cache Hit Rate -->
+      <button
+        type="button"
+        id="btn-cache"
+        class="hud-btn"
+        popovertarget="pop-cache"
+        popovertargetaction="toggle"
+        aria-expanded="false"
+        aria-label="查看 Prompt 缓存命中率详情"
+      >
+        <span class="hud-label">Cache</span>
+        <span id="hud-cache-pct" class="hud-val mono">--</span>
+      </button>
+
+      <span class="hud-sep" aria-hidden="true"></span>
+
+      <!-- 4. Token Consumption & Quota -->
+      <button
+        type="button"
+        id="btn-tokens"
+        class="hud-btn"
+        popovertarget="pop-tokens"
+        popovertargetaction="toggle"
+        aria-expanded="false"
+        aria-label="查看 Token 消耗与 5h/7d 额度详情"
+      >
+        <span id="hud-tokens" class="hud-val mono">0</span>
+        <span class="hud-label">tok</span>
+      </button>
+
+      <span class="hud-sep" aria-hidden="true"></span>
+
+      <!-- 5. Update & Settings -->
+      <button
+        type="button"
+        id="btn-update"
+        class="hud-btn hud-btn-icon"
+        popovertarget="pop-update"
+        popovertargetaction="toggle"
+        aria-expanded="false"
+        aria-label="检查更新与浮窗设置"
+        title="检查更新与浮窗设置"
+      >
+        <svg width="13.5" height="13.5" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+          <path d="M13.2 8a5.2 5.2 0 1 1-1.35-3.5M13.2 2.8v2.5h-2.5" stroke="currentColor" stroke-width="1.45" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+        <span id="update-dot" class="update-badge-dot" aria-hidden="true"></span>
+      </button>
+    </div>
+  </main>
+
+  <!-- ============================================================
+       POPOVER 1: MODEL SPEED
+       ============================================================ -->
+  <div id="pop-speed" class="metric-popover" popover="auto" role="region" aria-label="模型速度详情">
+    <div class="pop-head">
+      <div class="pop-head-left">
+        <span class="pop-title">模型速度</span>
+        <span id="sp-pill" class="pop-pill">等待数据</span>
+      </div>
+      <button type="button" class="pop-close" popovertarget="pop-speed" popovertargetaction="hide" aria-label="关闭模型速度卡片">ESC</button>
+    </div>
+
+    <div class="pop-body">
+      <div class="pop-hero">
+        <div class="pop-hero-main">
+          <span id="sp-tps" class="hero-num mono">--</span>
+          <span class="hero-unit mono">tok/s</span>
+        </div>
+        <div class="hero-right mono">TTFT <strong id="sp-ttft">--</strong></div>
+      </div>
+
+      <div class="chart-box">
+        <div class="chart-caption">
+          <span>最近 7 次请求吞吐趋势</span>
+          <span id="sp-range" class="mono">--</span>
+        </div>
+        <div id="sp-bars" class="bar-series" aria-hidden="true"></div>
+      </div>
+
+      <div class="kv-list">
+        <div class="kv-row">
+          <span>耗时占比（模型 vs 工具）</span>
+          <span class="mono"><strong id="sp-llm-sec">0.0s</strong> / <span id="sp-tool-sec">0.0s</span></span>
+        </div>
+        <div class="progress-track" aria-hidden="true">
+          <span id="sp-llm-bar" class="seg-primary" style="width: 100%;"></span>
+          <span id="sp-tool-bar" class="seg-warn" style="width: 0%;"></span>
+        </div>
+        <div class="kv-row">
+          <span><span class="legend-dot" style="background:var(--ink-primary)"></span>纯模型往返</span>
+          <span><span class="legend-dot" style="background:var(--sem-warn)"></span>工具执行不计入 tok/s</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="pop-footer">
+      <span id="sp-note">单步有效吞吐（已剔除工具耗时）</span>
+      <span id="sp-model" class="mono">gpt-6.2-sol</span>
+    </div>
+  </div>
+
+  <!-- ============================================================
+       POPOVER 2: CONTEXT WINDOW
+       ============================================================ -->
+  <div id="pop-ctx" class="metric-popover" popover="auto" role="region" aria-label="上下文占用详情">
+    <div class="pop-head">
+      <div class="pop-head-left">
+        <span class="pop-title">当前上下文快照</span>
+        <span id="ctx-pill" class="pop-pill is-info">余量充足</span>
+      </div>
+      <button type="button" class="pop-close" popovertarget="pop-ctx" popovertargetaction="hide" aria-label="关闭上下文卡片">ESC</button>
+    </div>
+
+    <div class="pop-body">
+      <div id="ctx-banner" class="pop-banner"></div>
+
+      <div class="pop-hero">
+        <div class="pop-hero-main">
+          <span id="ctx-pct" class="hero-num mono">0.0%</span>
+          <span id="ctx-used" class="hero-unit mono">0 / 475k</span>
+        </div>
+        <div id="ctx-delta" class="hero-right mono">--</div>
+      </div>
+
+      <div id="ctx-track" class="progress-track progress-track-ctx" aria-hidden="true">
+        <span id="ctx-bar" class="seg-ctx" style="width: 0%;"></span>
+        <span class="ctx-threshold-mark" title="80% 建议压缩警戒线"></span>
+      </div>
+
+      <div class="chart-box">
+        <div class="chart-caption">
+          <span>最近 7 步上下文水位变化</span>
+          <span id="ctx-compact-tag" class="mono">80% 处标有压缩线</span>
+        </div>
+        <div id="ctx-bars" class="bar-series" aria-hidden="true"></div>
+      </div>
+
+      <div class="kv-list">
+        <div class="kv-row">
+          <span>模型有效窗口</span>
+          <strong id="ctx-window" class="mono">475,000 tokens</strong>
+        </div>
+        <div class="kv-row">
+          <span>剩余可用空间</span>
+          <strong id="ctx-remain" class="mono">475.0k tokens</strong>
+        </div>
+      </div>
+    </div>
+
+    <div class="pop-footer">
+      <span>口径：最近一次请求 input_tokens（非累计）</span>
+    </div>
+  </div>
+
+  <!-- ============================================================
+       POPOVER 3: CACHE HIT RATE
+       ============================================================ -->
+  <div id="pop-cache" class="metric-popover" popover="auto" role="region" aria-label="缓存命中率详情">
+    <div class="pop-head">
+      <div class="pop-head-left">
+        <span class="pop-title">Prompt 缓存命中率</span>
+        <span id="ca-pill" class="pop-pill">等待数据</span>
+      </div>
+      <button type="button" class="pop-close" popovertarget="pop-cache" popovertargetaction="hide" aria-label="关闭缓存命中率卡片">ESC</button>
+    </div>
+
+    <div class="pop-body">
+      <div id="ca-banner" class="pop-banner"></div>
+
+      <div class="pop-hero">
+        <div class="pop-hero-main">
+          <span id="ca-pct" class="hero-num mono">--</span>
+          <span class="hero-unit">加权命中</span>
+        </div>
+        <div class="hero-right mono">写入 <strong id="ca-write">0</strong></div>
+      </div>
+
+      <div class="progress-track" aria-hidden="true">
+        <span id="ca-hit-bar" class="seg-ok" style="width: 0%;"></span>
+        <span id="ca-miss-bar" class="seg-muted" style="width: 100%;"></span>
+      </div>
+
+      <div class="chart-box">
+        <div class="chart-caption">
+          <span>最近 7 步单次命中率</span>
+          <span id="ca-latest-step" class="mono">--</span>
+        </div>
+        <div id="ca-bars" class="bar-series" aria-hidden="true"></div>
+      </div>
+
+      <div class="kv-list">
+        <div class="kv-row">
+          <span><span class="legend-dot" style="background:var(--sem-ok)"></span>命中缓存 (cached)</span>
+          <strong id="ca-cached" class="mono">0</strong>
+        </div>
+        <div class="kv-row">
+          <span><span class="legend-dot" style="background:var(--border-strong)"></span>未命中输入 (uncached)</span>
+          <strong id="ca-uncached" class="mono">0</strong>
+        </div>
+      </div>
+    </div>
+
+    <div class="pop-footer">
+      <span>公式：Σcached_input_tokens / Σinput_tokens</span>
+    </div>
+  </div>
+
+  <!-- ============================================================
+       POPOVER 4: TOKEN CONSUMPTION & RATE LIMITS
+       ============================================================ -->
+  <div id="pop-tokens" class="metric-popover" popover="auto" role="region" aria-label="Token 消耗与额度详情">
+    <div class="pop-head">
+      <div class="pop-head-left">
+        <span class="pop-title">Token 消耗与配额</span>
+        <span class="pop-pill">已去重推理</span>
+      </div>
+      <button type="button" class="pop-close" popovertarget="pop-tokens" popovertargetaction="hide" aria-label="关闭 Token 消耗卡片">ESC</button>
+    </div>
+
+    <div class="pop-body">
+      <div class="pop-hero">
+        <div class="pop-hero-main">
+          <span id="tk-total" class="hero-num mono">0</span>
+          <span class="hero-unit">总计</span>
+        </div>
+        <div id="tk-session" class="hero-right mono">本会话累计</div>
+      </div>
+
+      <div class="kv-list">
+        <div class="kv-row">
+          <span>总输入 (Input)</span>
+          <strong id="tk-input" class="mono">0</strong>
+        </div>
+        <div class="kv-row">
+          <span>总输出 (Output · 已含推理)</span>
+          <strong id="tk-output" class="mono">0</strong>
+        </div>
+      </div>
+
+      <div class="chart-box">
+        <div class="chart-caption">
+          <span>输出构成拆分（不重复计数）</span>
+          <span id="tk-reas-pct" class="mono">推理占 0%</span>
+        </div>
+        <div class="progress-track" aria-hidden="true">
+          <span id="tk-reas-bar" class="seg-reasoning" style="width: 0%;"></span>
+          <span id="tk-vis-bar" class="seg-visible" style="width: 100%;"></span>
+        </div>
+        <div class="kv-row" style="font-size:11.5px">
+          <span><span class="legend-dot" style="background:var(--sem-reasoning)"></span>推理 <strong id="tk-reas" class="mono">0</strong></span>
+          <span><span class="legend-dot" style="background:var(--sem-info)"></span>可见输出 <strong id="tk-vis" class="mono">0</strong></span>
+        </div>
+      </div>
+    </div>
+
+    <div class="quota-block">
+      <div class="quota-item">
+        <div class="quota-row">
+          <span>5h 额度窗口</span>
+          <span id="quota-5h-text" class="mono">--</span>
+        </div>
+        <div class="progress-track">
+          <span id="quota-5h-bar" class="seg-primary" style="width: 0%;"></span>
+        </div>
+      </div>
+      <div class="quota-item">
+        <div class="quota-row">
+          <span>7d 额度窗口</span>
+          <span id="quota-7d-text" class="mono">--</span>
+        </div>
+        <div class="progress-track">
+          <span id="quota-7d-bar" class="seg-primary" style="width: 0%;"></span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============================================================
+       POPOVER 5: CHECK FOR UPDATES + LIGHTWEIGHT OVERLAY SETTINGS
+       ============================================================ -->
+  <div id="pop-update" class="metric-popover" popover="auto" role="region" aria-label="检查更新与浮窗设置">
+    <div class="pop-head">
+      <div class="pop-head-left">
+        <span class="pop-title">检查更新与设置</span>
+        <span id="upd-pill" class="pop-pill is-info">未检查</span>
+      </div>
+      <button type="button" class="pop-close" popovertarget="pop-update" popovertargetaction="hide" aria-label="关闭检查更新卡片">ESC</button>
+    </div>
+
+    <div class="pop-body">
+      <div class="kv-list">
+        <div class="kv-row">
+          <span>当前版本</span>
+          <strong id="upd-local-ver" class="mono">v0.1.0</strong>
+        </div>
+        <div class="kv-row">
+          <span>远程版本</span>
+          <strong id="upd-remote-ver" class="mono">--</strong>
+        </div>
+      </div>
+
+      <div class="repo-fixed-row">
+        <span>Repo</span>
+        <code id="upd-repo-value" class="repo-value" title="https://github.com/www12354jkl/Codex-Dashboard.git">www12354jkl/Codex-Dashboard</code>
+      </div>
+
+      <div id="upd-banner" class="pop-banner is-visible is-info">
+        点击「检查更新」获取 www12354jkl/Codex-Dashboard 远程版本。
+      </div>
+
+      <ul id="upd-notes" class="update-notes" hidden></ul>
+
+      <div id="upd-progress-wrap" class="update-progress-wrap">
+        <div class="kv-row" style="font-size:11px">
+          <span id="upd-progress-label">准备检查…</span>
+          <span id="upd-progress-pct" class="mono">0%</span>
+        </div>
+        <div class="progress-track progress-track-ctx">
+          <span id="upd-progress-bar" class="seg-ctx" style="width: 0%;"></span>
+        </div>
+      </div>
+
+      <div class="action-row">
+        <button type="button" id="btn-check-now" class="btn-secondary">检查更新</button>
+        <button type="button" id="btn-apply-update" class="btn-primary" disabled>覆盖更新</button>
+      </div>
+
+      <!-- Compact collapsible overlay calibration & appearance settings -->
+      <details id="settings-details" class="settings-details">
+        <summary>浮窗对齐与外观设置</summary>
+        <div class="settings-inner">
+          <div class="setting-row">
+            <span>外观主题</span>
+            <div class="seg-mini" role="group" aria-label="外观主题">
+              <button type="button" class="seg-mini-btn" data-theme="system" aria-pressed="true">系统</button>
+              <button type="button" class="seg-mini-btn" data-theme="light" aria-pressed="false">浅色</button>
+              <button type="button" class="seg-mini-btn" data-theme="dark" aria-pressed="false">深色</button>
+            </div>
+          </div>
+
+          <div class="setting-row">
+            <span>位置微调 <span id="offset-readout" class="mono">(0, 0)</span></span>
+            <div class="nudge-pad" role="group" aria-label="微调浮窗坐标偏移">
+              <button type="button" class="nudge-btn" data-nudge="-4,0" title="左移 4px (Shift+点击 20px)">←</button>
+              <button type="button" class="nudge-btn" data-nudge="0,4" title="上移 4px (Shift+点击 20px)">↑</button>
+              <button type="button" class="nudge-btn" data-nudge="0,-4" title="下移 4px (Shift+点击 20px)">↓</button>
+              <button type="button" class="nudge-btn" data-nudge="4,0" title="右移 4px (Shift+点击 20px)">→</button>
+              <button type="button" class="nudge-btn" data-nudge="reset" title="重置偏移 (0, 0)">↺</button>
+            </div>
+          </div>
+
+          <label class="setting-check">
+            <span>仅 Codex 窗口前台时显示</span>
+            <input type="checkbox" id="chk-focused-only" checked />
+          </label>
+
+          <label class="setting-check">
+            <span>审批 / 权限弹窗出现时自动隐藏</span>
+            <input type="checkbox" id="chk-hide-approval" checked />
+          </label>
+        </div>
+      </details>
+    </div>
+
+    <div class="pop-footer">
+      <span id="runtime-attach-text">独立模式 · 保留 ~/.codex-dashboard/ 配置</span>
+    </div>
+  </div>
+
+  <script type="module" src="./renderer.js"></script>
+</body>
+</html>
