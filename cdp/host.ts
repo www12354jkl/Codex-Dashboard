@@ -4,6 +4,7 @@ import { fileURLToPath } from "node:url";
 import { RolloutParser } from "../collector/rolloutParser.js";
 import { TelemetryCollectorService } from "../collector/service.js";
 import { OverlayConfigStore } from "../overlay/configStore.js";
+import { createEmptySnapshot } from "../shared/mock.js";
 import { DEFAULT_OVERLAY_CONFIG, OFFICIAL_GITHUB_REPO, type OverlayConfig, type TelemetrySnapshot, type UpdateStatus } from "../shared/types.js";
 import { GithubUpdater } from "../updater/githubUpdater.js";
 import {
@@ -186,6 +187,8 @@ interface ThreadState {
   nextDiscovery: number;
 }
 
+type PageThreadMode = "unset" | "new_thread" | "thread";
+
 interface AttachedPage {
   url: string;
   connection: PageConnection;
@@ -193,9 +196,31 @@ interface AttachedPage {
   contexts: Map<number, PageContext>;
   frameId?: string;
   preloadId?: string;
+  threadMode: PageThreadMode;
   thread?: ThreadState;
   lastSnapshot?: string;
   detaching?: Promise<void>;
+}
+
+function createFreshThreadSnapshot(threadId: string | null, globalSnap: TelemetrySnapshot): TelemetrySnapshot {
+  const empty = createEmptySnapshot();
+  return {
+    ...empty,
+    sessionId: threadId,
+    model: globalSnap.model || empty.model,
+    reasoningEffort: globalSnap.reasoningEffort || empty.reasoningEffort,
+    updatedAtMs: 0,
+    status: "no_data",
+    speed: {
+      ...empty.speed,
+      note: threadId ? "新对话 · 等待首条响应数据" : "新对话 · 发送消息后开始统计"
+    },
+    context: {
+      ...empty.context,
+      windowTokens: globalSnap.context.windowTokens || empty.context.windowTokens
+    },
+    rateLimits: globalSnap.rateLimits
+  };
 }
 
 export interface CodexCdpHostState {
@@ -351,7 +376,7 @@ export class CodexCdpHost {
         this.notifyState();
       }
     });
-    const page: AttachedPage = { url, connection, contexts: new Map(), installation: Promise.resolve() };
+    const page: AttachedPage = { url, connection, contexts: new Map(), installation: Promise.resolve(), threadMode: "unset" };
     this.pages.set(id, page);
     this.notifyState();
     page.installation = this.install(page).catch(error => this.installFailed(page, error));
@@ -406,6 +431,7 @@ export class CodexCdpHost {
       case "Runtime.executionContextDestroyed": {
         const id = Number(params.executionContextId);
         if (id === this.mainContext(page)?.id) {
+          page.threadMode = "unset";
           page.thread = undefined;
           page.lastSnapshot = undefined;
         }
@@ -414,6 +440,7 @@ export class CodexCdpHost {
       }
       case "Runtime.executionContextsCleared":
         page.contexts.clear();
+        page.threadMode = "unset";
         page.thread = undefined;
         page.lastSnapshot = undefined;
         break;
@@ -435,7 +462,9 @@ export class CodexCdpHost {
       case "thread_hint": {
         const id = message.threadId?.toLowerCase();
         const threadId = id && THREAD_UUID.test(id) ? id : undefined;
-        if (threadId === page.thread?.id) break;
+        const nextMode: PageThreadMode = threadId ? "thread" : "new_thread";
+        if (nextMode === page.threadMode && threadId === page.thread?.id) break;
+        page.threadMode = nextMode;
         page.thread = threadId ? { id: threadId, nextDiscovery: 0 } : undefined;
         await this.refreshPage(page);
         break;
@@ -472,6 +501,10 @@ export class CodexCdpHost {
 
   private async refreshPage(page: AttachedPage): Promise<void> {
     if (this.lifetime.signal.aborted || page.detaching || !this.mainContext(page)) return;
+    if (page.threadMode === "new_thread") {
+      this.pushSnapshot(page, createFreshThreadSnapshot(null, this.collector.getSnapshot()));
+      return;
+    }
     const thread = page.thread;
     if (!thread) {
       this.pushSnapshot(page, this.collector.getSnapshot());
@@ -485,7 +518,7 @@ export class CodexCdpHost {
     if (!thread.parser && Date.now() >= thread.nextDiscovery) {
       const filename = await findThreadRollout(path.join(this.collector.codexHome, "sessions"), thread.id);
       if (filename) thread.parser = new RolloutParser(filename);
-      thread.nextDiscovery = Date.now() + 5_000;
+      thread.nextDiscovery = Date.now() + 1_000;
     }
     let snapshot: TelemetrySnapshot | undefined;
     if (thread.parser) {
@@ -501,7 +534,20 @@ export class CodexCdpHost {
       }
     }
     if (page.thread === thread && !page.detaching && !this.lifetime.signal.aborted) {
-      this.pushSnapshot(page, snapshot ?? this.collector.getSnapshot());
+      const globalSnap = this.collector.getSnapshot();
+      if (!snapshot) {
+        // Brand-new thread whose rollout file has not been flushed yet: show initialized zeroed metrics,
+        // never another conversation's historical data.
+        this.pushSnapshot(page, createFreshThreadSnapshot(thread.id, globalSnap));
+        return;
+      }
+      const hasRateLimits = Boolean(snapshot.rateLimits.primary || snapshot.rateLimits.secondary);
+      const merged: TelemetrySnapshot = {
+        ...snapshot,
+        sessionId: snapshot.sessionId ?? thread.id,
+        rateLimits: hasRateLimits ? snapshot.rateLimits : globalSnap.rateLimits
+      };
+      this.pushSnapshot(page, merged);
     }
   }
 

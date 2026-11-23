@@ -74,7 +74,8 @@ export async function spawnCodexWithCdp(executable: string, port: number): Promi
     const child = spawn(executable, [`--remote-debugging-port=${port}`], {
       detached: true,
       stdio: "ignore",
-      windowsHide: true
+      // Must be false for GUI executables: windowsHide:true sets SW_HIDE and causes Electron/Codex to boot into the tray.
+      windowsHide: false
     });
     child.once("error", reject);
     child.once("spawn", () => {

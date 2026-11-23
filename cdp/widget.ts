@@ -37,6 +37,7 @@ const CODEX_PLACEHOLDER_RE = /codex|工作区|代码|任务|ask\s+codex|work\s+w
 const ORDINARY_CHAT_PLACEHOLDER_RE = /询问任何问题|给\s*chatgpt\s*发消息|ask\s+anything|message\s+chatgpt/i;
 const VOICE_OVERLAY_RE = /结束语音|end\s+voice|live\s+voice/i;
 const INACTIVE_SHELL_SELECTOR = '[data-app-shell-active-page="false"], [aria-hidden="true"], [inert]';
+const SIDEBAR_SELECTOR = 'nav, aside, [role="navigation"], [role="complementary"]';
 
 /* ============================================================
    SHADOW DOM STYLES (STYLE A NATIVE HAIRLINE + COLLAPSED ICON)
@@ -1349,7 +1350,7 @@ interface ConversationMarkerInfo {
   isChatgptConversation: boolean;
 }
 
-function inspectActiveConversationMarkers(nearRect?: DOMRect): ConversationMarkerInfo {
+function inspectActiveConversationMarkers(composer: Element, nearRect?: DOMRect): ConversationMarkerInfo {
   const attrs = [
     "data-above-composer-conversation-id",
     "data-conversation-id",
@@ -1357,42 +1358,90 @@ function inspectActiveConversationMarkers(nearRect?: DOMRect): ConversationMarke
   ];
   let isChatgptConversation = false;
 
-  for (const attr of attrs) {
-    const matches: Array<{ el: Element; rect: DOMRect; threadId: string }> = [];
-    for (const node of document.querySelectorAll(`[${attr}]`)) {
-      if (node.closest(`#${HOST_ID}`) || node.closest(INACTIVE_SHELL_SELECTOR)) continue;
-      const raw = (node.getAttribute(attr) ?? "").trim();
+  // 1. Check composer itself and its direct ancestors first.
+  let ancestor: Element | null = composer;
+  for (let depth = 0; ancestor && depth < 12 && ancestor !== document.body; depth++, ancestor = ancestor.parentElement) {
+    if (ancestor.matches(INACTIVE_SHELL_SELECTOR) || ancestor.matches(SIDEBAR_SELECTOR)) break;
+    for (const attr of attrs) {
+      const raw = (ancestor.getAttribute(attr) ?? "").trim();
       if (!raw) continue;
       if (/^chatgpt\s*:/i.test(raw)) {
-        const r = node.getBoundingClientRect();
-        if (isVisibleRect(r) || !nearRect) {
-          isChatgptConversation = true;
-        }
-        continue;
+        return { threadId: null, isChatgptConversation: true };
       }
       const m = THREAD_UUID_RE.exec(raw);
       if (m) {
-        matches.push({ el: node, rect: node.getBoundingClientRect(), threadId: m[0].toLowerCase() });
+        return { threadId: m[0].toLowerCase(), isChatgptConversation: false };
       }
-    }
-
-    if (matches.length > 0) {
-      const visible = matches.filter((m) => isVisibleRect(m.rect));
-      if (nearRect && visible.length > 0) {
-        const cx = nearRect.left + nearRect.width / 2;
-        visible.sort((a, b) => {
-          const da = cx < a.rect.left ? a.rect.left - cx : cx > a.rect.right ? cx - a.rect.right : 0;
-          const db = cx < b.rect.left ? b.rect.left - cx : cx > b.rect.right ? cx - b.rect.right : 0;
-          return da - db;
-        });
-        return { threadId: visible[0]!.threadId, isChatgptConversation: false };
-      }
-      const chosen = visible.at(-1) ?? matches[0]!;
-      return { threadId: chosen.threadId, isChatgptConversation: false };
     }
   }
 
-  const fromUrl = THREAD_UUID_RE.exec(`${location.pathname}${location.search}${location.hash}`);
+  // 2. Check active-page DOM markers.
+  //    Codex Desktop renders [data-above-composer-conversation-id] as a 0x0 empty marker inside the active page
+  //    while keeping previously opened pages mounted under [data-app-shell-active-page="false"].
+  for (const attr of attrs) {
+    const visibleAligned: Array<{ rect: DOMRect; threadId: string }> = [];
+    const zeroSizeMarkers: Array<{ threadId: string }> = [];
+
+    for (const node of document.querySelectorAll(`[${attr}]`)) {
+      if (
+        node.closest(`#${HOST_ID}`) ||
+        node.closest(INACTIVE_SHELL_SELECTOR) ||
+        node.closest(SIDEBAR_SELECTOR)
+      ) {
+        continue;
+      }
+      const raw = (node.getAttribute(attr) ?? "").trim();
+      if (!raw) continue;
+
+      const rect = node.getBoundingClientRect();
+      const hasGeometry = rect.width > 0 && rect.height > 0;
+
+      // Skip visible sidebar thread rows sitting outside the active composer column
+      if (hasGeometry && nearRect && (rect.right < nearRect.left - 24 || rect.left > nearRect.right + 24)) {
+        continue;
+      }
+
+      if (/^chatgpt\s*:/i.test(raw)) {
+        isChatgptConversation = true;
+        continue;
+      }
+
+      const m = THREAD_UUID_RE.exec(raw);
+      if (!m) continue;
+      const threadId = m[0].toLowerCase();
+
+      if (hasGeometry) {
+        visibleAligned.push({ rect, threadId });
+      } else {
+        zeroSizeMarkers.push({ threadId });
+      }
+    }
+
+    if (visibleAligned.length > 0) {
+      if (nearRect) {
+        const cx = nearRect.left + nearRect.width / 2;
+        visibleAligned.sort((a, b) => {
+          const da = cx < a.rect.left ? a.rect.left - cx : cx > a.rect.right ? cx - a.rect.right : 0;
+          const db = cx < b.rect.left ? b.rect.left - cx : cx > b.rect.right ? cx - b.rect.right : 0;
+          return da - db || Math.abs(nearRect.top - a.rect.bottom) - Math.abs(nearRect.top - b.rect.bottom);
+        });
+        return { threadId: visibleAligned[0]!.threadId, isChatgptConversation: false };
+      }
+      return { threadId: visibleAligned.at(-1)!.threadId, isChatgptConversation: false };
+    }
+
+    // Active main-task empty marker is mounted first in DOM
+    if (zeroSizeMarkers.length > 0) {
+      return { threadId: zeroSizeMarkers[0]!.threadId, isChatgptConversation: false };
+    }
+  }
+
+  // 3. Fallback to active route URL.
+  const routeText =
+    location.pathname === "/index.html"
+      ? `${location.pathname}${location.search}${location.hash}`
+      : `${location.pathname}${location.hash}`;
+  const fromUrl = THREAD_UUID_RE.exec(routeText);
   return {
     threadId: fromUrl ? fromUrl[0].toLowerCase() : null,
     isChatgptConversation
@@ -1498,7 +1547,7 @@ function findComposerAnchor(): (ComposerAnchorMeasurement & { threadId: string |
     const centerY = centerPool.reduce((sum, it) => sum + it.cy, 0) / centerPool.length;
     const centerX = (leftEnd + rightStart) / 2;
 
-    const markers = inspectActiveConversationMarkers(compRect);
+    const markers = inspectActiveConversationMarkers(composer, compRect);
     const hasCodexAccessControl = row.some((it) => it.isCodexAccess);
     const hasModelControl = row.some((it) => it.isRight);
     const hasWorkspaceIndicator =
@@ -1583,7 +1632,7 @@ function findComposerAnchor(): (ComposerAnchorMeasurement & { threadId: string |
   let openPanel: PanelKey | null = null;
   let openFromCompact = false;
   let activeTrigger: HTMLElement | null = null;
-  let lastThreadHint: string | null = null;
+  let lastThreadHint: string | null | undefined = undefined;
   let layoutRaf = 0;
   let disposed = false;
 
@@ -1724,6 +1773,7 @@ function findComposerAnchor(): (ComposerAnchorMeasurement & { threadId: string |
     const miniBar = $("hud-ctx-bar");
     miniBar.className = "mini-bar-fill" + (ctxLevel === "ok" ? "" : ` is-${ctxLevel}`);
     miniBar.style.width = `${ctxPct.toFixed(1)}%`;
+    miniBar.style.minWidth = ctxPct > 0 || snap.context.usedTokens > 0 ? "" : "0";
     const miniPct = $("hud-ctx-pct");
     miniPct.textContent = `${Math.round(ctxPct)}%`;
     miniPct.className = "hud-val mono " + (ctxLevel === "ok" ? "is-ctx-ok" : `is-${ctxLevel}`);
@@ -1759,6 +1809,7 @@ function findComposerAnchor(): (ComposerAnchorMeasurement & { threadId: string |
     $("ctx-track").className = "progress-track progress-track-ctx" + (ctxLevel === "ok" ? "" : ` is-${ctxLevel}`);
     $("ctx-bar").className = "seg-ctx" + (ctxLevel === "ok" ? "" : ` is-${ctxLevel}`);
     $("ctx-bar").style.width = `${ctxPct.toFixed(1)}%`;
+    $("ctx-bar").style.minWidth = ctxPct > 0 || snap.context.usedTokens > 0 ? "" : "0";
 
     if (ctxLevel === "danger") {
       setPill($("ctx-pill"), "接近压缩", "danger");
@@ -1837,7 +1888,11 @@ function findComposerAnchor(): (ComposerAnchorMeasurement & { threadId: string |
     $("tk-reas-pct").textContent = `推理占 ${reasPct}%`;
     $("tk-reas-bar").style.width = `${reasPct}%`;
     $("tk-vis-bar").style.width = `${100 - reasPct}%`;
-    $("tk-session").textContent = snap.sessionId ? `会话 ${snap.sessionId.slice(0, 8)}` : "本会话累计";
+    $("tk-session").textContent = snap.sessionId
+      ? `会话 ${snap.sessionId.slice(0, 8)}`
+      : snap.tokens.totalTokens === 0
+        ? "新对话"
+        : "本会话累计";
 
     const p5 = snap.rateLimits.primary;
     $("quota-5h-text").textContent = p5

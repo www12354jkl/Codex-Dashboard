@@ -345,6 +345,40 @@ test("CDP host injects and serves independent windows, reconnects, reloads, and 
   first.binding({ type: "thread_hint", threadId: threadIds[0] });
   await until(() => lastSession(first) === threadIds[0], "a new document can select its own thread");
 
+  // Switching to a brand-new unsent conversation (threadId: null) resets per-thread metrics to initialized zeros
+  const lastSnap = (page: MockPage) => page.events.findLast(event => event.type === "snapshot")?.payload;
+  first.binding({ type: "thread_hint", threadId: null });
+  await until(() => lastSnap(first)?.sessionId === null && lastSnap(first)?.tokens.totalTokens === 0,
+    "a new unsent conversation resets metrics to initialized state");
+  assert.equal(lastSnap(first)?.context.usedTokens, 0);
+  assert.equal(lastSnap(first)?.speed.latestStepTps, null);
+  assert.equal(lastSnap(first)?.cache.weightedHitRate, null);
+
+  // A brand-new thread UUID whose rollout has not yet been written shows initialized zeros instead of an old session
+  const pendingThreadId = "019abcde-1234-7000-8000-000000000099";
+  first.binding({ type: "thread_hint", threadId: pendingThreadId });
+  await until(() => lastSnap(first)?.sessionId === pendingThreadId && lastSnap(first)?.tokens.totalTokens === 0,
+    "a new thread before its first rollout flush stays initialized");
+  const pendingFile = path.join(sessionDir, `rollout-2026-11-23T10-05-00-${pendingThreadId}.jsonl`);
+  await writeFile(pendingFile, [
+    JSON.stringify({ type: "session_meta", payload: { id: pendingThreadId, cwd: pendingThreadId } }),
+    JSON.stringify({
+      type: "event_msg",
+      payload: {
+        type: "token_count",
+        info: {
+          model_context_window: 475000,
+          last_token_usage: { input_tokens: 12000, cached_input_tokens: 9000, output_tokens: 400, reasoning_output_tokens: 100, total_tokens: 12400 },
+          total_token_usage: { input_tokens: 12000, cached_input_tokens: 9000, output_tokens: 400, reasoning_output_tokens: 100, total_tokens: 12400 }
+        }
+      }
+    })
+  ].join("\n") + "\n");
+  await until(() => lastSnap(first)?.sessionId === pendingThreadId && lastSnap(first)?.tokens.totalTokens === 12400,
+    "once the new thread writes its rollout, live metrics stream in automatically");
+  first.binding({ type: "thread_hint", threadId: threadIds[0] });
+  await until(() => lastSession(first) === threadIds[0], "can switch back to an existing thread");
+
   second.binding({ type: "update_config", patch: { theme: "dark", offsetX: 25 } });
   const hasConfig = (page: MockPage) =>
     page.events.some(event => event.type === "config" && event.payload.theme === "dark" && event.payload.offsetX === 25);
